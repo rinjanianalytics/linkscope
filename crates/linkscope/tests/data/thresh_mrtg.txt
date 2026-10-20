@@ -1,0 +1,435 @@
+== without ThreshDir
+-- poll 0: in 52118, out 400
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "41.7",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 41.7% (52118) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 41.7% (52118)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+-- poll 1: in 52118, out 64
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "41.7",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 41.7% (52118) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 41.7% (52118)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "64",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 64 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 64\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+-- poll 2: in 60000, out 0
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "48.0",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 48.0% (60000) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 48.0% (60000)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "0",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 0 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 0\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+-- poll 3: in 10000, out 500
+-- poll 4: in 40000.5, out 99.9
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "32.0",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 32.0% (40000.5) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 32.0% (40000.5)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "99.9",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 99.9 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 99.9\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+== ThreshHyst 0.5
+-- poll 0: in 52118, out 400
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "41.7",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 41.7% (52118) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 41.7% (52118)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+-- poll 1: in 52118, out 64
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "41.7",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 41.7% (52118) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 41.7% (52118)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "64",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 64 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 64\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+-- poll 2: in 60000, out 0
+-- poll 3: in 10000, out 500
+-- poll 4: in 40000.5, out 99.9
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "32.0",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 32.0% (40000.5) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 32.0% (40000.5)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "99.9",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 99.9 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 99.9\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+== with ThreshDir
+-- poll 0: in 52118, out 400
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "41.7",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 41.7% (52118) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 41.7% (52118)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+state files: ["m.cfg.r1.threshmaxI"]
+-- poll 1: in 52118, out 64
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "64",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 64 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 64\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+state files: ["m.cfg.r1.threshmaxI", "m.cfg.r1.threshminO"]
+-- poll 2: in 60000, out 0
+state files: ["m.cfg.r1.threshmaxI", "m.cfg.r1.threshminO"]
+-- poll 3: in 10000, out 500
+Run {
+    argv: [
+        "/bin/echo",
+        "r1",
+        "30%",
+        "8.0",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] UN-BROKEN r1 thresh max i ( 30% vs 8.0)",
+    body: "Threshold UN-BROKEN\n-------------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 8.0% (10000)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] UN-BROKEN r1 thresh min o ( 100 vs 500)",
+    body: "Threshold UN-BROKEN\n-------------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 500\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+state files: []
+-- poll 4: in 40000.5, out 99.9
+Run {
+    argv: [
+        "/bin/true",
+        "r1",
+        "30%",
+        "32.0",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh max i ( 30% (37500.0) vs 32.0% (40000.5) )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: i\n    Bound: max\nThreshold: 30% (37500.0)\n  Current: 32.0% (40000.5)\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+Run {
+    argv: [
+        "/bin/false",
+        "r1",
+        "100",
+        "99.9",
+        "uplink to the lab",
+    ],
+    env: [
+        (
+            "SITE",
+            "lab",
+        ),
+        (
+            "THRESH_DESC",
+            "uplink to the lab",
+        ),
+    ],
+}
+Mail {
+    to: "noc@example.com",
+    subject: "[MRTG-TH] BROKEN r1 thresh min o ( 100 vs 99.9 )",
+    body: "Threshold BROKEN\n----------------\n\nRouter one <b>ether2</b>\n\n   Target: r1\n     Type: thresh\nDirection: o\n    Bound: min\nThreshold: 100\n  Current: 99.9\n\nSystem: r1\n\n\nuplink to the lab\n",
+}
+state files: ["m.cfg.r1.threshmaxI", "m.cfg.r1.threshminO"]
