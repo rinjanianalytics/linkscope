@@ -37,7 +37,7 @@ async fn api_never_returns_credentials() {
     st.warnings.push("warning mentioning Comm-un1ty and /usr/local/bin/probe --password=cmdSECRET".into());
     let state = Arc::new(RwLock::new(st));
     let app = linkscope_web::router(state);
-    for uri in ["/api/summary", "/api/targets", "/api/targets/a", "/api/targets/b", "/api/targets/c"] {
+    for uri in ["/api/summary", "/api/targets", "/api/targets/a", "/api/targets/b", "/api/targets/c", "/metrics"] {
         let res = app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
         let body = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
         let text = String::from_utf8_lossy(&body);

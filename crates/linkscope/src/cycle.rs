@@ -409,6 +409,7 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
 
     let (mut time, mut uptime, mut name) = (0, None, None);
     if let Some(u) = t.unique_source.and_then(|u| results.get(u)) {
+        live.if_index = u.if_index[0].clone();
         time = u.time;
         uptime = u.uptime.clone();
         name = u.name.clone();

@@ -3,6 +3,7 @@
 //! files are embedded in the binary (no CDN, works on isolated networks).
 
 pub mod api;
+pub mod metrics;
 pub mod state;
 
 use std::net::SocketAddr;
@@ -76,6 +77,7 @@ pub fn router(state: SharedState) -> Router {
         .route("/api/targets", get(api::targets))
         .route("/api/targets/{name}", get(api::target))
         .route("/api/targets/{name}/series", get(api::series))
+        .route("/metrics", get(metrics::metrics))
         .route("/healthz", get(|| async { "ok" }))
         .fallback(static_file)
         .with_state(state)
