@@ -124,7 +124,7 @@ them.
 |---|---|
 | `crates/config` | Config reader, validator, Target compiler, safe evaluator |
 | `crates/rate` | Port of `rateup`: log format, rate math, consolidation, graph statistics |
-| `crates/mrtg` | SNMP client, poller, cycle engine, thresholds, daemon, cfgmaker, CLI |
+| `crates/linkscope` | SNMP client, poller, cycle engine, thresholds, daemon, cfgmaker, CLI |
 | `crates/web` | JSON API and embedded React UI (`crates/web/ui`) |
 | `testenv` | Test agents, parity and benchmark scripts |
 
