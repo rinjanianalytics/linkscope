@@ -109,6 +109,18 @@ fn resolvable(host: &str) -> bool {
     !host.is_empty() && (host, 25).to_socket_addrs().map(|mut a| a.next().is_some()).unwrap_or(false)
 }
 
+/// `ThreshMailServer`: a host name, or LinkScope's `host:port`.
+fn mail_server(v: &str) -> bool {
+    match v.rsplit_once(':') {
+        Some((h, p)) if !h.contains(':') && p.parse::<u16>().is_ok_and(|p| p > 0) => resolvable(h),
+        _ => resolvable(v),
+    }
+}
+
+fn http_url(v: &str) -> bool {
+    re(r"(?i)^https?://[^\s/?#]+(?:[/?#]\S*)?$").is_match(v)
+}
+
 /// Validate one keyword value. `per_target` selects the `key[]` rule.
 /// Returns `Ok(None)` when valid.
 pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
@@ -160,7 +172,7 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
         ("sendtographite", false) => rule!(re(r"^.*,[0-9]+$").is_match(v), format!("Invalid Graphite Destination '{v}'")),
         ("threshdir", false) => rule!(is_dir(v), format!("Threshold directory {v} does not exist")),
         ("threshhyst", false) | ("hwthreshhyst", false) => rule!(float(v), format!("{v} must be a Number xxx.xxx")),
-        ("threshmailserver", false) => rule!(resolvable(v), format!("Unknown mailserver hostname {v}")),
+        ("threshmailserver", false) => rule!(mail_server(v), format!("Unknown mailserver hostname {v}")),
         ("threshmailsender", false) => rule!(
             email(v),
             format!("ThreshMailAddress {v} does not look like an email address at all")
@@ -171,6 +183,10 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
             format!("{v} must be an address:port such as 127.0.0.1:8080 or [::1]:8080")
         ),
         ("execshell", false) | ("webreadonly", false) => rule!(yes_no(v), format!("{v} must be yes or no")),
+        // These may hold credentials: their messages never repeat the value.
+        ("alertwebhook", false) => rule!(http_url(v), "must be an http:// or https:// URL".into()),
+        ("alertwebhooksecret", false) => rule!(v.chars().count() >= 16, "must be at least 16 characters long".into()),
+        ("alertmailuser", false) | ("alertmailpassword", false) => rule!(!v.trim().is_empty(), "must not be empty".into()),
 
         // ---- per-target keywords
         ("target", true) | ("routeruptime", true) | ("routername", true) | ("title", true)
@@ -232,6 +248,7 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
             email(v),
             format!("ThreshMailAddress {v} does not look like an email address at all")
         ),
+        ("threshfor", true) => rule!(pos_int(v), format!("{v} must be a Number bigger than 0")),
         ("timestrpos", true) => rule!(
             re(r"(?i)^(no|[lr][ul])$").is_match(v),
             "Must be a string of NO, LU, RU, LL, RL".into()
