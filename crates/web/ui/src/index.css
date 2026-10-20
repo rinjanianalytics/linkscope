@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens. Values are HSL channels so Tailwind can apply alpha.
+ * Accent palette: Rinjani Analytics (teal #35776F, mid teal #509087,
+ * sage #789B78, slate gray-green #5A6A66, dark forest #253834).
+ * Status colours are deliberately separate from the accent.
+ */
+@layer base {
+  :root {
+    color-scheme: light;
+    --brand-teal: 173 38% 34%;
+    --brand-mid: 172 29% 44%;
+    --brand-sage: 120 15% 54%;
+    --brand-slate: 165 8% 38%;
+    --brand-forest: 167 20% 18%;
+
+    --background: 220 14% 96%;
+    --foreground: 220 12% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 12% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 12% 10%;
+    --primary: var(--brand-teal);
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 220 12% 16%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 7% 40%;
+    --accent: 173 32% 92%;
+    --accent-foreground: 173 42% 26%;
+    --border: 220 13% 90%;
+    --input: 220 13% 86%;
+    --ring: var(--brand-teal);
+
+    --status-ok: 145 63% 32%;
+    --status-ok-soft: 145 55% 93%;
+    --status-warn: 35 92% 36%;
+    --status-warn-soft: 42 95% 91%;
+    --status-error: 0 70% 46%;
+    --status-error-soft: 0 85% 95%;
+    --status-stale: 220 8% 45%;
+    --status-stale-soft: 220 12% 92%;
+    --status-pending: 220 8% 52%;
+    --status-pending-soft: 220 14% 94%;
+
+    --chart-in: var(--brand-teal);
+    --chart-out: var(--brand-forest);
+    --chart-in-peak: var(--brand-sage);
+    --chart-out-peak: var(--brand-slate);
+    --chart-grid: 220 13% 90%;
+
+    --radius-card: 24px;
+    --radius-lg: 16px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+
+    --shadow-card: 0 1px 2px hsl(220 20% 20% / 0.04), 0 8px 24px -12px hsl(220 20% 20% / 0.12);
+    --shadow-card-hover: 0 1px 2px hsl(220 20% 20% / 0.05), 0 14px 32px -12px hsl(220 20% 20% / 0.2);
+    --shadow-pop: 0 12px 40px -8px hsl(220 20% 10% / 0.22);
+
+    --text-display: 2.25rem;
+    --text-title: 1.375rem;
+    --text-stat: 1.75rem;
+    --text-label: 0.6875rem;
+    --tracking-display: -0.04em;
+    --tracking-title: -0.02em;
+    --tracking-label: 0.08em;
+
+    --space-gutter: 1rem;
+    --space-section: 2rem;
+    --space-card: 1.25rem;
+    --chart-height: 15rem;
+    --motion-flip: 520ms;
+    --spark-height: 3rem;
+  }
+
+  @media (min-width: 640px) {
+    :root {
+      --text-display: 3rem;
+      --space-gutter: 1.5rem;
+      --space-card: 1.5rem;
+      --chart-height: 17rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    :root {
+      --text-display: 3.625rem;
+      --space-gutter: 2rem;
+      --space-section: 2.5rem;
+    }
+  }
+
+  /*
+   * Dark theme. public/theme-init.js sets the class before first paint from
+   * the saved choice, or from prefers-color-scheme when there is none.
+   */
+  :root.dark {
+    color-scheme: dark;
+    --background: 220 13% 7%;
+    --foreground: 220 14% 94%;
+    --card: 220 12% 11%;
+    --card-foreground: 220 14% 94%;
+    --popover: 220 12% 13%;
+    --popover-foreground: 220 14% 94%;
+    --primary: 172 34% 52%;
+    --primary-foreground: 167 30% 8%;
+    --secondary: 220 10% 17%;
+    --secondary-foreground: 220 14% 90%;
+    --muted: 220 10% 15%;
+    --muted-foreground: 220 8% 64%;
+    --accent: 173 28% 17%;
+    --accent-foreground: 172 40% 74%;
+    --border: 220 10% 19%;
+    --input: 220 10% 25%;
+    --ring: 172 34% 52%;
+
+    --status-ok: 145 55% 55%;
+    --status-ok-soft: 145 40% 15%;
+    --status-warn: 40 90% 60%;
+    --status-warn-soft: 38 40% 14%;
+    --status-error: 0 80% 66%;
+    --status-error-soft: 0 32% 15%;
+    --status-stale: 220 8% 62%;
+    --status-stale-soft: 220 10% 18%;
+    --status-pending: 220 8% 58%;
+    --status-pending-soft: 220 10% 16%;
+
+    --chart-in: var(--brand-mid);
+    --chart-out: 120 25% 72%;
+    --chart-in-peak: 172 30% 68%;
+    --chart-out-peak: var(--brand-sage);
+    --chart-grid: 220 10% 20%;
+
+    --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.3), 0 8px 24px -12px hsl(0 0% 0% / 0.5);
+    --shadow-card-hover: 0 1px 2px hsl(0 0% 0% / 0.35), 0 14px 32px -12px hsl(0 0% 0% / 0.65);
+    --shadow-pop: 0 12px 40px -8px hsl(0 0% 0% / 0.6);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* 3D helpers for the theme coin (ThemeToggle). */
+  .perspective-coin {
+    perspective: 240px;
+  }
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+  .duration-flip {
+    transition-duration: var(--motion-flip);
+  }
+}
+
+@layer components {
+  /* Server-sanitized HTML from the MRTG config (PageTop, PageFoot, Legend*). */
+  .mrtg-html a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+  .mrtg-html p + p {
+    @apply mt-2;
+  }
+  .mrtg-html h1,
+  .mrtg-html h2,
+  .mrtg-html h3 {
+    @apply font-semibold tracking-tight;
+  }
+  .mrtg-html table {
+    @apply text-sm;
+  }
+  .mrtg-html td,
+  .mrtg-html th {
+    @apply px-2 py-1 text-left align-top;
+  }
+  .mrtg-html img {
+    @apply inline-block max-w-full;
+  }
+}
+
+/* Recharts: keep the focus ring on the chart surface consistent with the theme. */
+.recharts-surface:focus {
+  outline: none;
+}

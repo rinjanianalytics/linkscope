@@ -1,0 +1,63 @@
+# End-to-end parity config: original MRTG and linkscope must produce
+# byte-identical logs for every target.
+WorkDir: @WORK@
+Options[_]: growright
+Target[v1_index]: 2:dev0@127.0.0.1:20163
+Title[v1_index]: v1 by ifIndex
+MaxBytes[v1_index]: 125000000
+Target[v2_name_hc]: #Gi0/3:dev1@127.0.0.1:20163::::2
+Title[v2_name_hc]: v2c by ifName, 64-bit
+MaxBytes[v2_name_hc]: 125000000
+Target[descr]: \GigabitEthernet0/5:dev2@127.0.0.1:20163
+Title[descr]: by ifDescr
+MaxBytes[descr]: 125000000
+Target[ip]: /10.3.4.1:dev3@127.0.0.1:20163
+Title[ip]: by IP address
+MaxBytes[ip]: 125000000
+Target[mac]: !02-00-00-04-00-06:dev4@127.0.0.1:20163
+Title[mac]: by MAC address
+MaxBytes[mac]: 125000000
+Target[type_dup]: %6:dev5@127.0.0.1:20163
+Title[type_dup]: by ifType (ambiguous, must be unknown)
+MaxBytes[type_dup]: 125000000
+Target[wrap32]: 8:dev6@127.0.0.1:20163
+Title[wrap32]: 32-bit counter that wraps
+MaxBytes[wrap32]: 125000000
+Target[sum]: 1:dev6@127.0.0.1:20163 + 2:dev6@127.0.0.1:20163
+Title[sum]: sum of two interfaces
+MaxBytes[sum]: 250000000
+Target[bits]: ( 3:dev7@127.0.0.1:20163 ) * 8
+Title[bits]: arithmetic
+MaxBytes[bits]: 1000000000
+AbsMax[bits]: 4000000000
+Target[complex_hc]: 1.3.6.1.2.1.31.1.1.1.6.4&1.3.6.1.2.1.31.1.1.1.10.4:dev8@127.0.0.1:20163::::2
+Title[complex_hc]: explicit 64-bit OIDs
+MaxBytes[complex_hc]: 125000000
+Target[missing_oid]: ifInErrors.1&ifOutErrors.1:dev8@127.0.0.1:20163
+Title[missing_oid]: OID the agent lacks
+MaxBytes[missing_oid]: 1000
+Target[gauge]: ifSpeed.1&ifMtu.1:dev9@127.0.0.1:20163
+Title[gauge]: gauge
+MaxBytes[gauge]: 2000000000
+Options[gauge]: gauge
+Target[unknaszero]: 5:dev9@127.0.0.1:20163
+Title[unknaszero]: unknaszero
+MaxBytes[unknaszero]: 125000000
+Options[unknaszero]: unknaszero, growright
+Target[perminute]: 4:dev9@127.0.0.1:20163
+Title[perminute]: perminute
+MaxBytes[perminute]: 125000000
+Options[perminute]: perminute
+Target[clamped]: 6:dev9@127.0.0.1:20163
+Title[clamped]: AbsMax below the real rate
+MaxBytes[clamped]: 100
+Target[dead_host]: 1:dev0@127.0.0.1:20999:1:1
+Title[dead_host]: no agent listening
+MaxBytes[dead_host]: 1000
+Target[wrong_comm]: 1:nosuchdev@127.0.0.1:20163:1:1
+Title[wrong_comm]: wrong community
+MaxBytes[wrong_comm]: 1000
+Target[exec]: `/usr/bin/printf '1234\n5678\n'`
+Title[exec]: external command
+MaxBytes[exec]: 100000
+Options[exec]: gauge

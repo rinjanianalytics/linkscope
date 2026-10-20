@@ -1,0 +1,54 @@
+LinkScope
+Copyright (C) 2026 Rinjani Analytics
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 2 of the License, or (at your option)
+any later version. See the file LICENSE.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+more details.
+
+
+Derived from MRTG
+-----------------
+
+LinkScope is a modified version of MRTG, the Multi Router Traffic Grapher,
+version 2.17.10:
+
+    Copyright (C) 1995-2022 Tobias Oetiker and the MRTG contributors
+    https://oss.oetiker.ch/mrtg/  ·  https://github.com/oetiker/mrtg
+    Licensed under the GNU General Public License, version 2 or later.
+
+Derived from MRTG (rewritten in Rust, October 2026):
+
+    crates/config     MRTG's configuration grammar, validation and Target
+                      syntax (bin/mrtg, lib/mrtg2/MRTG_lib.pm)
+    crates/rate       the .log file format, rate calculation and
+                      consolidation (src/rateup.c)
+    crates/linkscope  polling behaviour, the interface cache, thresholds,
+                      daemon mode and cfgmaker (bin/mrtg, bin/cfgmaker)
+    crates/linkscope/src/oid_table.rs, iftype_table.rs
+                      OID and ifType names (lib/mrtg2/MRTG_lib.pm,
+                      bin/cfgmaker)
+
+Changes from MRTG: everything was rewritten in Rust. The Perl evaluation of
+configuration was replaced by a safe expression compiler, SNMPv3 and a
+built-in web UI were added, and HTML/PNG output was dropped. The full list
+of differences is in docs/COMPATIBILITY.md; security changes are in
+docs/SECURITY.md.
+
+LinkScope is not affiliated with or endorsed by Tobias Oetiker or the MRTG
+project. "MRTG" is used only to describe compatibility and origin.
+
+
+Third-party components
+----------------------
+
+Rust crates and JavaScript packages compiled into LinkScope are used under
+their own licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0, Unicode-3.0, 0BSD,
+Unlicense). The Poppins typeface is licensed under the SIL Open Font
+License 1.1. Icons are from Lucide (ISC). Run `cargo tree` and
+`npm ls --prod` in crates/web/ui for the exact list.
