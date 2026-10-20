@@ -7,7 +7,7 @@
 For each poll in the window it reads, right after the poll, the router's own interface byte
 counters (REST: `rx-byte`, `tx-byte`) and LinkScope's `/metrics`, and checks:
 
-- every counter equals the router's, less at most the traffic since the poll (a 32-bit counter
+- every counter equals the router's, less at most the traffic since the poll and 30 s of bursts (a 32-bit counter
   is compared modulo 2^32);
 - every rate equals the JSON API's `cur_in`/`cur_out` for the same target;
 - no community from the config appears anywhere in `/metrics`.
@@ -148,7 +148,10 @@ def main():
                 expect = router if wide else router % 2 ** 32
                 behind = (expect - v) % (2 ** 64 if wide else 2 ** 32)
                 rate = rates.get(("linkscope_target_rate", l["target"], l["direction"])) or 0.0
-                allow = rate * (t_router - newest) * 2 + 65536
+                # The traffic since the poll, plus 30 s of it: the rate is a 5-minute mean and real
+                # traffic comes in bursts (the lab's CHR moved 390 kB in one 2.5 s gap at a mean of
+                # 53 kB/s). The plan allows one poll's traffic; this is a tenth of that.
+                allow = rate * (t_router - newest + 30) + 65536
                 row["targets"][f"{l['target']} {l['direction']}"] = {"linkscope": v, "router": router, "behind": behind,
                                                                       "allowed": round(allow), "64bit": wide}
                 check(behind <= allow, f"  {l['target']} {l['direction']}: counter {int(v)}, router {expect}"

@@ -44,6 +44,21 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
    equals the API's within rounding, every counter equals the CHR's own `rx-byte`/`tx-byte`
    read over its REST API at the same moment (within one poll's traffic), no secret in the
    output (the secrets test extended to `/metrics`), `parity.sh` still byte-identical.
+   Done 2026-10-20 (`testenv/gate-metrics.py --minutes 60`, 11:50 to 12:50 WIB, the lab's CHR on
+   SNMPv2c): 13 polls; after each of the 12 caught live, the router's REST counters read 0.6 to
+   5.1 s later, LinkScope's counters behind them by at most 522 kB on the busy direction (10 s of
+   its mean 52 kB/s; the lab's stream comes in bursts of up to 390 kB per 2.5 s) and 1 kB on the
+   quiet one; every `/metrics` rate equal to the API's; no community in any scrape. A Prometheus
+   (v3.15.0) scraped 240 times in 60 min, never down; the counters' growth over the hour against
+   LinkScope's own rates: 52,144 and 52,126 B/s (0.04 %), 52,141 and 52,123 B/s, 2.8 and 2.8,
+   80.1 and 80.3. 85 workspace tests and the new ones pass; clippy clean on the changed crates.
+   Not run: `parity.sh` (MRTG 2.17.10 with its compiled `rateup`, snmpsim and faketime are not
+   on this host); build 1 reads the logs and writes nothing to them.
+   Found:
+   - `cfgmaker` without a version writes SNMPv1 targets, as MRTG's does: 32-bit counters, which
+     wrap every 34 s at 1 Gbit/s. The README now says to use `:::::2` for interfaces.
+   - The gate's first allowance (twice the traffic since the poll) was tighter than the plan's
+     gate and failed on bursts; it is now the traffic since the poll plus 30 s of it.
 2. **Alerts that reach people.** MRTG's `ThreshProg*`, `ThreshMail*` and `ThreshDir` behave as
    they do now. New, off until set:
    - `AlertWebhook: <url>`: a JSON body per change (target, direction, bound, rate, state
@@ -71,7 +86,9 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
    PathScope's Phase 6 measured -0.27 % over 5 minutes); a planted fault (the device's sampling
    set to 1 instead of 10) flagged within two windows and cleared after it is set back.
 
-- [ ] Build 1: `/metrics`, rates and counters matching the router.
+- [x] Build 1: `/metrics`, rates and counters matching the router.
+      2026-10-20: 13 polls in an hour, counters within 10 s of traffic of the router's, rates
+      equal to the API's, Prometheus 240 scrapes never down, no community in any output.
 - [ ] Build 2: webhook and mail alerts, fired and resolved once each.
 - [ ] Build 3: flows and counters compared in PathScope, a planted fault named.
 
