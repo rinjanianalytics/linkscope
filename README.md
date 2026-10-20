@@ -68,6 +68,23 @@ honouring `Options[]` (bits, growright, logscale, perminute, ...), `kMG`,
 `Kilo`, `Factor`, legends, `WithPeak`, `Unscaled` and `Suppress`. The UI is
 read-only, embedded in the binary, and needs no internet access.
 
+### Prometheus
+
+The same listener serves `GET /metrics` for Prometheus: every target's current rates
+(`linkscope_target_rate`), the counters as last read (`linkscope_target_counter_total`, so
+`rate()` works), `MaxBytes`, status and last poll time, and the last cycle's duration and
+outcome. Labels name the target, its `Directory[]`, the SNMP host and the interface (the
+selector as written and the ifIndex it resolved to); never a community or a password.
+
+```yaml
+scrape_configs:
+  - job_name: linkscope
+    static_configs: [{ targets: ['127.0.0.1:8080'] }]
+```
+
+Interface targets need SNMPv2c or v3 (`router:::::2` in the Target, `cfgmaker router:::::2`)
+for 64-bit counters; SNMPv1 counters are 32 bits and wrap every 34 seconds at 1 Gbit/s.
+
 ## Verification
 
 | What | Result |

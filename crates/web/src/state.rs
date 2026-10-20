@@ -15,6 +15,9 @@ pub struct TargetLive {
     /// Raw values handed to the rate engine (`None` = unknown).
     pub in_raw: Option<String>,
     pub out_raw: Option<String>,
+    /// The ifIndex the target's interface resolved to (a single SNMP source
+    /// with an interface selector), for matching with other tools.
+    pub if_index: Option<String>,
     /// Device uptime and name (MRTG's "system has been up" line).
     pub uptime: Option<String>,
     pub sys_name: Option<String>,
