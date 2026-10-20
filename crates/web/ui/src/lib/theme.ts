@@ -29,7 +29,9 @@ export function useTheme() {
     document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   )
 
-  useEffect(() => apply(theme), [theme])
+  useEffect(() => {
+    apply(theme)
+  }, [theme])
 
   // Track the system setting while the user has not chosen.
   useEffect(() => {

@@ -28,7 +28,11 @@ export function TargetPage({ name }: { name: string }) {
     }
   }, [t])
 
-  useEffect(() => window.scrollTo(0, 0), [name])
+  // A block, not an expression: newer Chrome returns a Promise from scrollTo, and React would
+  // call whatever an effect returns as its cleanup.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [name])
 
   const back = (
     <Button variant="ghost" size="sm" asChild className="-ml-3 w-fit">

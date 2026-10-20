@@ -1,6 +1,7 @@
-import { Route, Switch } from 'wouter'
+import { Route, Switch, useLocation } from 'wouter'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppHeader } from '@/components/AppHeader'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Overview } from '@/pages/Overview'
 import { TargetPage } from '@/pages/TargetPage'
 import { NotFound } from '@/pages/NotFound'
@@ -21,6 +22,7 @@ export default function App() {
   // Summary and the target list are shared by every screen and refreshed together.
   const summary = usePolling((signal) => api.summary(signal), LIST_REFRESH_MS, [])
   const targets = usePolling((signal) => api.targets(signal), LIST_REFRESH_MS, [])
+  const [location] = useLocation()
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -36,15 +38,17 @@ export default function App() {
         loading={summary.loading || targets.loading}
       />
       <main id="main" className="mx-auto w-full max-w-screen-2xl px-gutter py-section">
-        <Switch>
-          <Route path="/">
-            <Overview summary={summary} targets={targets} />
-          </Route>
-          <Route path="/target/:name">{(params) => <TargetPage name={decode(params.name)} />}</Route>
-          <Route>
-            <NotFound />
-          </Route>
-        </Switch>
+        <ErrorBoundary key={location}>
+          <Switch>
+            <Route path="/">
+              <Overview summary={summary} targets={targets} />
+            </Route>
+            <Route path="/target/:name">{(params) => <TargetPage name={decode(params.name)} />}</Route>
+            <Route>
+              <NotFound />
+            </Route>
+          </Switch>
+        </ErrorBoundary>
       </main>
       <footer className="mx-auto w-full max-w-screen-2xl px-gutter pb-section text-xs text-muted-foreground">
         <span className="flex flex-wrap gap-x-2 gap-y-1">
