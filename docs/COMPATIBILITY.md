@@ -93,9 +93,16 @@ a multi-line `[^]` prefix ending in `NoSpaceChar` keeps only its last line;
 * `--daemon` detaches like MRTG; `--foreground` (or `NoDetach: yes`) keeps it
   attached for systemd.
 * New options: `--listen`, `--concurrency`, `--foreground`,
-  `--allow-insecure-config`. New global keywords: `WebListen`, `ExecShell`.
-  MRTG itself would reject these keywords, so keep them out of configs you
-  still share with MRTG.
+  `--allow-insecure-config`. New global keywords: `WebListen`, `ExecShell`,
+  `AlertWebhook`, `AlertWebhookSecret`, `AlertMailUser`, `AlertMailPassword`;
+  new per-target keyword: `ThreshFor[]`. MRTG itself would reject these
+  keywords, so keep them out of configs you still share with MRTG.
+* `ThreshMailServer` also takes `host:port`.
+* Thresholds of a target without `ThreshFor[]` run their programs and mails
+  exactly as MRTG does (`crates/linkscope/tests/thresh_mrtg.rs` pins it). With
+  `ThreshFor[]`, they run once when an alert fires and once when it clears.
+  Either way the alert state is also kept in `<config>.alerts`, for the UI
+  and `AlertWebhook`.
 * `--log-only` is accepted and does nothing (nothing but logs is written).
 * `--check` does not take the lock, so it works while the daemon runs.
 * `Directory[x]: /routers/` means `WorkDir/routers/`, as with MRTG's string

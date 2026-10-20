@@ -15,7 +15,7 @@ use axum::middleware::{self, Next};
 use axum::routing::get;
 use include_dir::{Dir, include_dir};
 
-pub use state::{CycleInfo, LiveState, SharedState, TargetLive};
+pub use state::{AlertLive, CycleInfo, LiveState, SharedState, TargetLive};
 
 static UI: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/ui/dist");
 

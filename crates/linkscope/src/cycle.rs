@@ -24,6 +24,7 @@ use linkscope_rate::{Mode, Period, RateLog, SummaryOpts, UpdateOutcome};
 use linkscope_web::{CycleInfo, SharedState, TargetLive};
 use tokio::sync::Semaphore;
 
+use crate::alerts::{self, Book};
 use crate::confcache::ConfCache;
 use crate::oids::OidResolver;
 use crate::poll::{Poller, SourceResult, now};
@@ -65,6 +66,11 @@ pub struct Engine {
     opts: EngineOptions,
     /// Threshold actions still running from earlier cycles.
     actions: tokio::task::JoinSet<()>,
+    /// LinkScope's alert state, kept in `<cache>.alerts`.
+    alerts: Book,
+    alerts_path: PathBuf,
+    /// Alerts that ended with the last reload, still to be reported.
+    removed: Vec<alerts::Event>,
 }
 
 /// Device uptime/name fetched through `RouterUptime[]` / `RouterName[]`.
@@ -106,6 +112,8 @@ pub fn program_name(cmd: &str) -> String {
 struct Outcome {
     live: TargetLive,
     actions: Vec<thresh::Action>,
+    /// This poll's threshold comparisons, for the alert state.
+    evals: Vec<thresh::Eval>,
     /// MRTG's exit-code notion: both values were defined.
     defined: bool,
     /// The log could not be read or written.
@@ -130,12 +138,20 @@ impl Engine {
             exec_timeout: opts.exec_timeout,
             agent_budget: budget,
         };
+        let alerts_path = Book::path_for(&cache_path);
+        let mut alerts = Book::load(&alerts_path);
+        let removed = alerts.prune(&cfg);
         {
             let mut s = state.write().unwrap_or_else(|e| e.into_inner());
             s.config = Some(cfg.clone());
             s.warnings = cfg.warnings.clone();
+            for t in &cfg.targets {
+                if let Some(l) = s.targets.get_mut(&t.name) {
+                    l.alerts = alerts.live(t);
+                }
+            }
         }
-        Engine { cfg, poller, state, cache_path, opts, actions: tokio::task::JoinSet::new() }
+        Engine { cfg, poller, state, cache_path, opts, actions: tokio::task::JoinSet::new(), alerts, alerts_path, removed }
     }
 
     /// Wait for threshold actions still running (call before exiting).
@@ -179,6 +195,7 @@ impl Engine {
                                                 Outcome {
                                                     live: TargetLive { error: Some("internal error; see the daemon log".into()), failed: true, last_poll: now(), ..Default::default() },
                                                     actions: Vec::new(),
+                                                    evals: Vec::new(),
                                                     defined: false,
                                                     write_failed: true,
                                                 }
@@ -203,14 +220,40 @@ impl Engine {
         let n = cfg.targets.len();
         let (mut ok, mut write_failures) = (0, 0);
         let mut actions = Vec::new();
+        // LinkScope's alerts: which bounds fired or cleared this poll.
+        let view = linkscope_web::api::view(&cfg);
+        for ev in std::mem::take(&mut self.removed) {
+            actions.extend(alerts::webhook(&cfg, &view, &ev));
+        }
+        let mut lives = Vec::with_capacity(n);
+        for (t, mut o) in cfg.targets.iter().zip(outcomes) {
+            ok += usize::from(o.defined);
+            write_failures += usize::from(o.write_failed);
+            actions.extend(o.actions);
+            if t.thresholds.any() {
+                for ev in self.alerts.observe(t, &o.evals, o.live.last_poll) {
+                    tracing::info!(
+                        "alert {} {} {} {}: {}",
+                        t.name,
+                        ev.entry.direction,
+                        ev.entry.bound,
+                        ev.entry.threshold,
+                        if ev.change == alerts::Change::Fired { "firing" } else { "resolved" }
+                    );
+                    if t.thresholds.for_polls.is_some() {
+                        if let Some(e) = &ev.eval {
+                            actions.extend(thresh::transition(&cfg, t, e));
+                        }
+                    }
+                    actions.extend(alerts::webhook(&cfg, &view, &ev));
+                }
+            }
+            o.live.alerts = self.alerts.live(t);
+            lives.push((t.name.clone(), o.live));
+        }
         {
             let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
-            for (t, o) in cfg.targets.iter().zip(outcomes) {
-                ok += usize::from(o.defined);
-                write_failures += usize::from(o.write_failed);
-                actions.extend(o.actions);
-                st.targets.insert(t.name.clone(), o.live);
-            }
+            st.targets.extend(lives);
         }
         if write_failures > 0 {
             tracing::error!("{write_failures} of {n} logs could not be read or written this cycle; check permissions of {}", cfg.global.log_dir.display());
@@ -236,6 +279,18 @@ impl Engine {
             }
         })
         .await;
+        if self.alerts.is_dirty() {
+            let mut book = std::mem::take(&mut self.alerts);
+            let path = self.alerts_path.clone();
+            self.alerts = tokio::task::spawn_blocking(move || {
+                if let Err(e) = book.save(&path) {
+                    tracing::warn!("writing {}: {e}", path.display());
+                }
+                book
+            })
+            .await
+            .unwrap_or_default();
+        }
         let info = CycleInfo { started, duration_ms: t0.elapsed().as_millis() as u64, targets: n, ok, failed: n - ok, write_failures };
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         st.cycles += 1;
@@ -436,7 +491,7 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
         }
         live.error = Some(errors.join("; "));
         live.failed = true;
-        Outcome { live, actions: Vec::new(), defined, write_failed: true }
+        Outcome { live, actions: Vec::new(), evals: Vec::new(), defined, write_failed: true }
     };
 
     if !t.directory.is_empty() {
@@ -468,6 +523,7 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     let mode = Mode::from_letter(t.options.rate_letter()).unwrap_or(Mode::Counter);
     let abs_max = i64::try_from(t.abs_max).unwrap_or(i64::MAX);
     let mut actions = Vec::new();
+    let mut evals = Vec::new();
     let mut write_failed = false;
     match log.update(time, input.as_deref().unwrap_or("-1"), output.as_deref().unwrap_or("-1"), abs_max, mode, t.options.unknaszero) {
         UpdateOutcome::Updated => {
@@ -489,7 +545,11 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
                     dorelpercent: t.options.dorelpercent,
                 };
                 let s = log.summarize(time, Period::Day, &opts);
-                actions = thresh::check(cfg, t, Some(s.cur_in as f64), Some(s.cur_out as f64));
+                evals = thresh::evaluate(t, Some(s.cur_in as f64), Some(s.cur_out as f64));
+                // ThreshFor[] targets act on alert changes instead (see alerts.rs).
+                if t.thresholds.for_polls.is_none() {
+                    actions = thresh::check_evals(cfg, t, &evals);
+                }
             }
         }
         UpdateOutcome::TimeWarp => errors.push(format!("{}: log file time is newer than now; log unchanged (is the clock right?)", t.name)),
@@ -502,7 +562,7 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
         live.error = Some(errors.join("; "));
     }
     live.failed = write_failed;
-    Outcome { live, actions, defined, write_failed }
+    Outcome { live, actions, evals, defined, write_failed }
 }
 
 /// Flush the filesystem holding `dir` (Linux `syncfs`; `sync` elsewhere).

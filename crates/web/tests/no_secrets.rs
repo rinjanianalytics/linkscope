@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-//! No API response may contain SNMP communities, v3 passwords or external
-//! command lines, even when errors quote them.
+//! No API response may contain SNMP communities, v3 passwords, external
+//! command lines or the alert settings' secrets (the webhook URL's token,
+//! its signing key, the mail password), even when errors quote them.
 
 use std::sync::{Arc, RwLock};
 
@@ -9,7 +10,7 @@ use axum::http::Request;
 use linkscope_web::{LiveState, TargetLive};
 use tower::ServiceExt;
 
-const SECRETS: &[&str] = &["Comm-un1ty", "authpass-SECRET", "privpass-SECRET", "--password=cmdSECRET"];
+const SECRETS: &[&str] = &["Comm-un1ty", "authpass-SECRET", "privpass-SECRET", "--password=cmdSECRET", "hooktoken-SECRET", "hmackey-SECRET", "mailpass-SECRET"];
 
 #[tokio::test]
 async fn api_never_returns_credentials() {
@@ -21,7 +22,9 @@ async fn api_never_returns_credentials() {
         &cfg_path,
         format!(
             "WorkDir: {}\n\
-             Target[a]: 2:Comm-un1ty@router1 / 2\nTitle[a]: A\nMaxBytes[a]: 100\n\
+             ThreshMailServer: localhost:587\nThreshMailSender: lab@example.com\nAlertMailUser: lab\nAlertMailPassword: mailpass-SECRET\n\
+             AlertWebhook: https://hooks.example.com/t/hooktoken-SECRET\nAlertWebhookSecret: hmackey-SECRET-0123456789\n\
+             Target[a]: 2:Comm-un1ty@router1 / 2\nTitle[a]: A\nMaxBytes[a]: 100\nThreshMaxI[a]: 30%\nThreshFor[a]: 2\nThreshMailAddress[a]: noc@example.com\n\
              Target[b]: 3:x@router2:::::3\nSnmpOptions[b]: username=>'u', authpassword=>'authpass-SECRET', privpassword=>'privpass-SECRET'\nTitle[b]: B\nMaxBytes[b]: 100\n\
              Target[c]: `/usr/local/bin/probe --password=cmdSECRET`\nTitle[c]: C\nMaxBytes[c]: 100\n",
             work.display()
@@ -35,6 +38,7 @@ async fn api_never_returns_credentials() {
         st.targets.insert(t.name.clone(), TargetLive { error: Some(format!("failed: {}", t.target_text)), last_poll: 1, ..Default::default() });
     }
     st.warnings.push("warning mentioning Comm-un1ty and /usr/local/bin/probe --password=cmdSECRET".into());
+    st.warnings.push("posting to https://hooks.example.com/t/hooktoken-SECRET with hmackey-SECRET-0123456789 failed; mail login mailpass-SECRET refused".into());
     let state = Arc::new(RwLock::new(st));
     let app = linkscope_web::router(state);
     for uri in ["/api/summary", "/api/targets", "/api/targets/a", "/api/targets/b", "/api/targets/c", "/metrics"] {

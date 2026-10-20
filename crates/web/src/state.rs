@@ -28,6 +28,32 @@ pub struct TargetLive {
     pub cur_out: Option<f64>,
     /// The log could not be read or written (data is not being recorded).
     pub failed: bool,
+    /// Threshold bounds broken now: firing, or waiting out `ThreshFor[]`.
+    pub alerts: Vec<AlertLive>,
+}
+
+/// One broken threshold bound of a target.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct AlertLive {
+    /// `in` or `out`.
+    pub direction: String,
+    /// `min` or `max`.
+    pub bound: String,
+    /// The bound as configured, e.g. `30%`.
+    pub threshold: String,
+    /// The bound and the day graph's current rate, in the log's units (like
+    /// `cur_in`); `percent` is the rate in percent of `MaxBytes` for a
+    /// percent bound.
+    pub threshold_rate: f64,
+    pub rate: f64,
+    pub percent: Option<f64>,
+    /// Broken for `polls` polls in a row; it fires at `polls_needed`.
+    pub firing: bool,
+    pub polls: u32,
+    pub polls_needed: u32,
+    /// Unix time of the first broken poll, and of the poll that fired it.
+    pub since: i64,
+    pub fired_at: Option<i64>,
 }
 
 /// Summary of one polling cycle.
