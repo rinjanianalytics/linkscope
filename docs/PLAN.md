@@ -108,6 +108,10 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
    Gate (on the PathScope lab): the CHR's two ports within 2 % over one hour (gate 3 of
    PathScope's Phase 6 measured -0.27 % over 5 minutes); a planted fault (the device's sampling
    set to 1 instead of 10) flagged within two windows and cleared after it is set back.
+   Changed in PathScope's plan (2026-10-20): flowd uses the sampling a router announces, and
+   the CHR announces its own, so a wrong sampling in Settings changes nothing on the lab. The
+   planted faults are the CHR exporting from no interface and 30 % of its IPFIX dropped; the
+   wrong-sampling verdict is covered by tests.
 
 - [x] Build 1: `/metrics`, rates and counters matching the router.
       2026-10-20: 13 polls in an hour, counters within 10 s of traffic of the router's, rates
@@ -115,7 +119,10 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
 - [x] Build 2: webhook and mail alerts, fired and resolved once each.
       2026-10-20: fired after `ThreshFor` 2 polls and resolved once each, by signed webhook
       and by mail over STARTTLS with a login; the control target behaved as MRTG.
-- [ ] Build 3: flows and counters compared in PathScope, a planted fault named.
+- [x] Build 3: flows and counters compared in PathScope, a planted fault named.
+      2026-10-20 (PathScope Phase 7 build 1): flows within -0.43 % and -0.42 % of the counters
+      over an hour on the CHR's two busy directions; no interface exported named after 20 min,
+      30 % of IPFIX dropped named as lost (-35.6 %) after 19 min, both cleared within 21 min.
 
 ## Open decisions
 
@@ -124,5 +131,3 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
 - When this repository goes public (it is private now).
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
-- Which PathScope phase build 3 belongs to: PathScope's Phase 6 (pilot readiness) is closing,
-  and its rules start no next phase early.
