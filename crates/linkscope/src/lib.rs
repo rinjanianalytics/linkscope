@@ -4,6 +4,7 @@
 // Index loops over MRTG's two directions (in/out) read closer to the original.
 #![allow(clippy::needless_range_loop, clippy::type_complexity, clippy::large_enum_variant)]
 
+pub mod alerts;
 pub mod cfgmaker;
 pub mod confcache;
 pub mod cycle;

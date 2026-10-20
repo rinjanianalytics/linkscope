@@ -1,9 +1,10 @@
-import { ArrowLeft, CircleX, Clock, Cpu, FileQuestion, Gauge, Network, Server } from 'lucide-react'
+import { ArrowLeft, BellRing, CircleX, Clock, Cpu, FileQuestion, Gauge, Network, Server } from 'lucide-react'
 import { Link } from 'wouter'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AlertList } from '@/components/AlertList'
 import { EmptyState } from '@/components/EmptyState'
 import { HtmlContent, hasHtml } from '@/components/HtmlContent'
 import { PageHeader } from '@/components/PageHeader'
@@ -104,6 +105,18 @@ export function TargetPage({ name }: { name: string }) {
           <CircleX />
           <AlertTitle>The last poll failed</AlertTitle>
           <AlertDescription className="break-words">{t.error}</AlertDescription>
+        </Alert>
+      )}
+
+      {t.alerts.length > 0 && (
+        <Alert variant={t.alerts.some((a) => a.firing) ? 'warn' : 'default'}>
+          <BellRing />
+          <AlertTitle>
+            {t.alerts.some((a) => a.firing) ? 'Threshold alert firing' : 'Threshold broken, not firing yet'}
+          </AlertTitle>
+          <AlertDescription>
+            <AlertList alerts={t.alerts} format={t.format} detailed className="text-sm" />
+          </AlertDescription>
         </Alert>
       )}
 
