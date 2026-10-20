@@ -1,4 +1,4 @@
-import { Activity, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
@@ -17,9 +17,8 @@ export function AppHeader({ version, updatedAt, loading }: AppHeaderProps) {
           href="/"
           className="flex items-center gap-2.5 rounded-pill font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="flex size-9 items-center justify-center rounded-pill bg-primary text-primary-foreground">
-            <Activity className="size-5" aria-hidden strokeWidth={2.25} />
-          </span>
+          {/* The Rinjani Analytics mark (public/logo.svg), the same artwork as PathScope's and FlowScope's. */}
+          <img src="/logo.svg" alt="" width={36} height={36} className="size-9 shrink-0 select-none" />
           <span className="text-lg">LinkScope</span>
           {version && (
             <span className="text-xs font-normal text-muted-foreground">
