@@ -37,6 +37,8 @@ pub struct SourceResult {
     pub name: Option<String>,
     /// Why values are missing, for the log and the UI.
     pub error: Option<String>,
+    /// The ifIndex each direction resolved to (none without an interface).
+    pub if_index: [Option<String>; 2],
 }
 
 /// Shared state for polling.
@@ -307,7 +309,8 @@ impl GroupCtx {
                     None
                 };
                 let [input, output] = io;
-                out.push((p.idx, SourceResult { input, output, time, uptime: uptime.clone(), name: name.clone(), error }));
+                let if_index = [0, 1].map(|d| p.ifnum[d].strip_prefix('.').map(str::to_string));
+                out.push((p.idx, SourceResult { input, output, time, uptime: uptime.clone(), name: name.clone(), error, if_index }));
             }
             todo = next_todo;
         }

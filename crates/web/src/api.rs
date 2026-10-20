@@ -7,6 +7,8 @@
 //! * `GET /api/targets/{name}/series?period=day|week|month|year[&maxx=N]`
 //!   graph columns and MRTG's Max/Average/Current figures for one period
 //!
+//! `GET /metrics` (Prometheus) is in [`crate::metrics`].
+//!
 //! Rates are in the log's unit (bytes per second, per minute with
 //! `perminute`, per hour with `perhour`). `format` tells the UI how MRTG
 //! would print them (`mul` is 8 for `bits`).
@@ -346,7 +348,7 @@ fn letters(s: &str) -> Vec<&'static str> {
     [("d", "day"), ("w", "week"), ("m", "month"), ("y", "year")].into_iter().filter(|(l, _)| s.contains(l)).map(|(_, n)| n).collect()
 }
 
-fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveState) -> TargetRow {
+pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveState) -> TargetRow {
     let t = &cfg.targets[ti];
     let live = st.targets.get(&t.name);
     let interval = cfg.global.interval_secs as i64;
