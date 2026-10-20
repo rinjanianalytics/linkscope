@@ -3,6 +3,7 @@ import { Link } from 'wouter'
 import { ChevronRight, Server, TriangleAlert, ChartNoAxesColumn } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { AlertList } from './AlertList'
 import { HtmlContent } from './HtmlContent'
 import { StatusPill } from './StatusPill'
 import { Sparkline } from './Sparkline'
@@ -59,6 +60,8 @@ function TargetCardImpl({ target }: { target: TargetSummary }) {
         </p>
       )}
 
+      <AlertList alerts={target.alerts ?? []} format={target.format} />
+
       <div className="mt-auto flex flex-col gap-3">
         <TrafficValues
           unknown={unknown}
@@ -111,6 +114,7 @@ export const TargetCard = memo(TargetCardImpl, (a, b) => {
       x.cur_out === y.cur_out &&
       x.growright === y.growright &&
       x.logscale === y.logscale &&
+      JSON.stringify(x.alerts) === JSON.stringify(y.alerts) &&
       JSON.stringify(x.format) === JSON.stringify(y.format) &&
       JSON.stringify(x.colours) === JSON.stringify(y.colours))
   )

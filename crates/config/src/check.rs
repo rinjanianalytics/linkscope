@@ -60,6 +60,17 @@ pub struct Global {
     pub thresh_hyst: f64,
     pub thresh_mail_server: Option<String>,
     pub thresh_mail_sender: Option<String>,
+    /// LinkScope: where threshold changes are posted (`AlertWebhook:`). The
+    /// URL may carry a token, so it and the signing secret are never serialized.
+    #[serde(skip)]
+    pub alert_webhook: Option<String>,
+    #[serde(skip)]
+    pub alert_webhook_secret: Option<String>,
+    /// LinkScope: log in to `ThreshMailServer` over STARTTLS with these.
+    #[serde(skip)]
+    pub alert_mail_user: Option<String>,
+    #[serde(skip)]
+    pub alert_mail_password: Option<String>,
     pub language: Option<String>,
     pub write_expires: bool,
     pub icon_dir: Option<String>,
@@ -171,6 +182,10 @@ pub struct Thresholds {
     pub prog_ok_i: Option<String>,
     pub prog_ok_o: Option<String>,
     pub mail_address: Option<String>,
+    /// LinkScope's `ThreshFor[]`: polls a bound must stay broken before it
+    /// fires. Set, the target's programs and mail run once when an alert
+    /// fires and once when it clears; unset, they run as MRTG runs them.
+    pub for_polls: Option<u32>,
 }
 
 impl Thresholds {
@@ -364,6 +379,17 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
     if g.contains_key("threshmailsender") && !g.contains_key("threshmailserver") {
         errors.push("If \"ThreshMailSender\" is defined, then \"ThreshMailServer\" must be defined too.".into());
     }
+    // LinkScope's alert keywords come in pairs (a webhook is always signed).
+    for (a, b) in [("AlertWebhook", "AlertWebhookSecret"), ("AlertMailUser", "AlertMailPassword")] {
+        for (x, y) in [(a, b), (b, a)] {
+            if g.contains_key(&x.to_ascii_lowercase()) && !g.contains_key(&y.to_ascii_lowercase()) {
+                errors.push(format!("If \"{x}\" is defined, then \"{y}\" must be defined too."));
+            }
+        }
+    }
+    if g.contains_key("alertmailuser") && !g.contains_key("threshmailserver") {
+        errors.push("\"AlertMailUser\" needs \"ThreshMailServer:\" to log in to.".into());
+    }
     let thresh_hyst = match g.get("threshhyst") {
         Some(h) if perl_num(h) != 0.0 => perl_num(h),
         _ => 0.1,
@@ -449,6 +475,10 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         thresh_hyst,
         thresh_mail_server: g.get("threshmailserver").cloned(),
         thresh_mail_sender: g.get("threshmailsender").cloned(),
+        alert_webhook: g.get("alertwebhook").cloned(),
+        alert_webhook_secret: g.get("alertwebhooksecret").cloned(),
+        alert_mail_user: g.get("alertmailuser").cloned(),
+        alert_mail_password: g.get("alertmailpassword").cloned(),
         language: g.get("language").cloned(),
         write_expires: yes(g.get("writeexpires")),
         icon_dir: g.get("icondir").cloned(),
@@ -641,6 +671,7 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             prog_ok_i: get("threshprogoki"),
             prog_ok_o: get("threshprogoko"),
             mail_address: get("threshmailaddress"),
+            for_polls: get("threshfor").map(|v| perl_int(&v).clamp(1, u32::MAX as i64) as u32),
         };
         if ["hwthreshmini", "hwthreshmino", "hwthreshmaxi", "hwthreshmaxo"].iter().any(|k| get(k).is_some()) {
             warnings.push(format!("[{name}] HW thresholds need RRDtool's Holt-Winters data and are ignored"));

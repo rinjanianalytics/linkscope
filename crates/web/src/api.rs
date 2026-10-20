@@ -141,6 +141,9 @@ impl View {
                 linkscope_config::Source::Exec(e) => secrets.push(e.command.clone()),
             }
         }
+        // The webhook URL may carry a token; the secret and password are keys.
+        let g = &cfg.global;
+        secrets.extend([&g.alert_webhook, &g.alert_webhook_secret, &g.alert_mail_password].into_iter().flatten().cloned());
         for t in &cfg.targets {
             for k in ["authpassword", "privpassword", "authkey", "privkey"] {
                 if let Some(v) = t.snmp_options.get(k) {
@@ -215,7 +218,7 @@ pub struct Summary {
 pub enum Status {
     /// Polled successfully in the last cycle.
     Ok,
-    /// One of in/out was unknown.
+    /// One of in/out was unknown, or a threshold alert is firing.
     Warn,
     /// No data this cycle.
     Error,
@@ -251,6 +254,8 @@ pub struct TargetRow {
     /// MRTG-formatted `cur_in` / `cur_out`.
     pub cur_in_text: Option<String>,
     pub cur_out_text: Option<String>,
+    /// Threshold bounds broken now (firing, or waiting out `ThreshFor[]`).
+    pub alerts: Vec<crate::state::AlertLive>,
 }
 
 #[derive(Serialize, Clone)]
@@ -358,6 +363,7 @@ pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveS
         Some(l) if l.in_raw.is_none() && l.out_raw.is_none() => Status::Error,
         Some(l) if now() - l.last_poll > 2 * interval + 60 => Status::Stale,
         Some(l) if l.in_raw.is_none() || l.out_raw.is_none() => Status::Warn,
+        Some(l) if l.alerts.iter().any(|a| a.firing) => Status::Warn,
         Some(_) => Status::Ok,
     };
     let fmt = Format::for_target(t);
@@ -384,6 +390,7 @@ pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveS
         cur_out: live.and_then(|l| l.cur_out),
         cur_in_text: live.and_then(|l| l.cur_in).map(|v| fmt.fmi(v, t.max_bytes1 as f64)),
         cur_out_text: live.and_then(|l| l.cur_out).map(|v| fmt.fmi(v, t.max_bytes2 as f64)),
+        alerts: live.map(|l| l.alerts.clone()).unwrap_or_default(),
     }
 }
 

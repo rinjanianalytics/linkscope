@@ -57,7 +57,8 @@ New options:
 | `--foreground` | Stay attached in daemon mode (systemd) |
 | `--allow-insecure-config` | Load config files others can write (warns) |
 
-New config keywords: `WebListen: 127.0.0.1:8080`, `ExecShell: yes`.
+New config keywords: `WebListen: 127.0.0.1:8080`, `ExecShell: yes`, and the alert
+keywords below.
 
 ## Web UI
 
@@ -84,6 +85,74 @@ scrape_configs:
 
 Interface targets need SNMPv2c or v3 (`router:::::2` in the Target, `cfgmaker router:::::2`)
 for 64-bit counters; SNMPv1 counters are 32 bits and wrap every 34 seconds at 1 Gbit/s.
+
+## Alerts
+
+MRTG's thresholds work as they always have: `ThreshMinI[]`, `ThreshMaxO[]` and the rest,
+`ThreshProgI[]`, `ThreshProgOKI[]`, `ThreshMailAddress[]`, `ThreshDir`, `ThreshHyst`. LinkScope
+adds, all off until set:
+
+```
+ThreshMaxI[core-uplink]: 80%
+ThreshFor[core-uplink]: 3            # broken for 3 polls in a row before it fires
+
+AlertWebhook: https://alerts.example.com/linkscope
+AlertWebhookSecret: 3f7c9a1e5b2d4c6f8a0e   # at least 16 characters
+
+ThreshMailServer: smtp.example.com:587
+ThreshMailSender: linkscope@example.com
+AlertMailUser: linkscope@example.com
+AlertMailPassword: app-password
+```
+
+- **The UI shows it.** A target with a firing alert shows as warn, with the bound that is
+  broken (`In above 80%, now 86.2%`). A bound broken for fewer polls than `ThreshFor[]` shows
+  as waiting, and the target stays ok.
+- **`ThreshFor[x]: N`** fires after N broken polls in a row and resolves at the first poll that
+  is not broken. With it set, the target's `ThreshProg*` and `ThreshMailAddress[]` run once when
+  the alert fires and once when it resolves, in MRTG's message format; without it, they run
+  exactly as MRTG runs them.
+- **`AlertWebhook`** gets a POST for every alert that fires or resolves, on every target with
+  thresholds (a target without `ThreshFor[]` fires at its first broken poll). Three attempts
+  (now, after 2 s, after 10 s) on a network error, a 5xx or a 429; no redirects.
+- **`AlertMailUser`** and **`AlertMailPassword`** make the threshold mail log in, over STARTTLS
+  that must succeed (port 587 unless `ThreshMailServer` names one). Without them, mail goes as
+  MRTG sends it: plain SMTP, port 25.
+- Mail and webhooks trust the system's certificate authorities; set `SSL_CERT_FILE` to use a
+  file of your own instead.
+- Alert state is kept in `<config>.alerts` beside the `.ok` file, so a reload or a restart
+  neither repeats nor loses a notice. A missed poll changes nothing.
+
+The webhook body:
+
+```json
+{
+  "event": "threshold", "state": "firing", "reason": null,
+  "target": "core-uplink", "title": "Core uplink", "directory": "core",
+  "direction": "in", "bound": "max", "threshold": "80%",
+  "threshold_rate": 100000.0, "rate": 107750.0, "percent": 86.2,
+  "polls": 3, "since": 1760940000, "time": 1760940600,
+  "description": null, "linkscope": "0.1.0"
+}
+```
+
+`state` is `firing` or `resolved`; a resolved alert's `reason` is `cleared` (back within the
+bound) or `removed` (its threshold left the configuration). `polls` counts the broken polls
+in a row, up to the one that fired it or cleared it. Rates are per second, bytes for interface
+counters. Each request carries `X-LinkScope-Timestamp` (Unix time) and
+`X-LinkScope-Signature: sha256=<hex>`, the HMAC-SHA256 of the timestamp, a full stop and the
+body, keyed with `AlertWebhookSecret`. To check it:
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: bytes, timestamp: str, body: bytes, signature: str) -> bool:
+    want = "sha256=" + hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, signature) and abs(time.time() - int(timestamp)) < 300
+```
+
+The webhook URL, its secret and the mail password never appear in the UI, the API or
+`/metrics`.
 
 ## Verification
 

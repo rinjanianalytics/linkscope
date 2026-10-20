@@ -74,6 +74,29 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
    Mailpit; the overview shows it as warn; the bound raised to 60 %: one resolved webhook and
    mail; a target without the new keywords behaves exactly as MRTG (`parity.sh`, threshold state
    files unchanged).
+   Done 2026-10-20 (`testenv/gate-alerts.py`, 14:06 to 14:31 WIB, 6 polls, 22 checks, all
+   passed). A LinkScope of the gate's own polled the CHR (the lab's stayed as it was). The mail
+   went to a Mailpit of the gate's own, from the image the lab's runs, because the lab's takes
+   plain SMTP only; it required STARTTLS (a CA made for the run, trusted through
+   `SSL_CERT_FILE`) and a login, and refused a plain test mail. ether2 inbound at 41.7 % against
+   `ThreshMaxI` 30 % with `ThreshFor` 2:
+   - first broken poll: the bound waiting (1 of 2), the target ok, nothing sent;
+   - second: one webhook (signature valid, `polls` 2, `since` the first broken poll), one
+     BROKEN mail, the `ThreshDir` state file, the target warn with its bound, the overview
+     counting it; one more poll repeated nothing;
+   - the bound raised to 60 % in the config: at the next poll one resolved webhook (`cleared`),
+     one UN-BROKEN mail, the state file removed, the target ok.
+
+   The control, ether1 outbound at 41.8 % with MRTG's keywords only (`ThreshMaxO` 30 %,
+   `ThreshProgO`, `ThreshProgOKO`, `ThreshDir`): the program ran once at its first broken poll
+   with MRTG's arguments (`10.10.0.72_ether1 30% 41.8 No Description`), its state file
+   appeared, nothing repeated; its webhook fired once at that poll. No webhook token, key or
+   mail password in the API, `/metrics` or the log; no warning or error in the log.
+   `crates/linkscope/tests/thresh_mrtg.rs` pins MRTG's programs, mails and state files over five
+   polls (without `ThreshDir`, with `ThreshHyst`, with `ThreshDir`), recorded before the change
+   and unchanged after it.
+   Not run: `parity.sh` (no MRTG, `rateup`, snmpsim or faketime on this host); the log files are
+   written by code build 2 did not touch.
 3. **Flow check, in PathScope (2026-10-20).** PathScope compares, per router interface, the
    bytes its flows saw (scaled by sampling) with LinkScope's octet counters for the same windows,
    and says when they disagree: a wrong sampling rate, an interface not exporting, a router
@@ -89,7 +112,9 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
 - [x] Build 1: `/metrics`, rates and counters matching the router.
       2026-10-20: 13 polls in an hour, counters within 10 s of traffic of the router's, rates
       equal to the API's, Prometheus 240 scrapes never down, no community in any output.
-- [ ] Build 2: webhook and mail alerts, fired and resolved once each.
+- [x] Build 2: webhook and mail alerts, fired and resolved once each.
+      2026-10-20: fired after `ThreshFor` 2 polls and resolved once each, by signed webhook
+      and by mail over STARTTLS with a login; the control target behaved as MRTG.
 - [ ] Build 3: flows and counters compared in PathScope, a planted fault named.
 
 ## Open decisions

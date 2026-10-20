@@ -70,6 +70,26 @@ export interface TargetSummary {
   cur_out_text: string | null
   growright: boolean
   logscale: boolean
+  /** Threshold bounds broken now: firing, or waiting out ThreshFor[]. */
+  alerts: ThresholdAlert[]
+}
+
+export interface ThresholdAlert {
+  direction: 'in' | 'out'
+  bound: 'min' | 'max'
+  /** As configured, e.g. "30%". */
+  threshold: string
+  /** The bound and the current rate, in log units like `cur_in`. */
+  threshold_rate: number
+  rate: number
+  /** The rate in percent of MaxBytes, for a percent bound. */
+  percent: number | null
+  firing: boolean
+  /** Broken for `polls` polls in a row; it fires at `polls_needed`. */
+  polls: number
+  polls_needed: number
+  since: number
+  fired_at: number | null
 }
 
 export interface Thresholds {
@@ -78,7 +98,9 @@ export interface Thresholds {
   max_i: string | null
   max_o: string | null
   desc: string | null
-  [key: string]: string | null
+  /** ThreshFor[]: polls a bound must stay broken before it fires. */
+  for_polls: number | null
+  [key: string]: string | number | null
 }
 
 export interface TargetDetail extends TargetSummary {
