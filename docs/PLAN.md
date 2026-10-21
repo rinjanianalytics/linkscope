@@ -19,7 +19,7 @@ when its gate passes with numbers recorded in its PR, and its box is ticked here
 LinkScope is GPL-2.0-or-later because it is derived from MRTG; Rinjani Analytics cannot relicense
 the derived parts, and anything built into the LinkScope program is GPL too. So:
 
-- **Free, GPL, this repository:** builds 1 to 3 below.
+- **Free, GPL, this repository:** builds 1 to 3 below, and gNMI in builds 4 to 6.
 - **Paid, a separate program** (closed, sold as a license or run as SaaS): it reads LinkScope only
   through its public interfaces (the JSON API, `/metrics`, the `.log` files) and is never linked
   into it. Candidates: 95th percentile billing on interface counters (what transit and IX
@@ -397,6 +397,9 @@ through gNMI (gRPC Network Management Interface) and treat it as the main way to
 for gNMI beside SNMP, so LinkScope reads more router models. SNMP stays: MikroTik and most older
 gear have no gNMI.
 
+**Free (AK, 2026-10-22).** gNMI is part of the free, GPL program. gNMI clients are common open
+source, and the paid program's value is the analysis on top of the counters.
+
 **How it fits.** A gNMI interface is a third kind of data source beside SNMP and external
 programs (`Source` in `crates/config/src/target.rs`). It yields the same in and out octet
 counters, so the `.log` files, rates, alerts, `/metrics`, the API and the UI work on it unchanged.
@@ -503,9 +506,5 @@ Builds 4 and 5 ship together as 0.3.0.
   AK's behalf).
 - A code of conduct for contributors (the Contributor Covenant, for example), which would also
   complete GitHub's community profile with a pull request template.
-- Whether gNMI is part of the free program (proposed: yes; gNMI clients are common open source,
-  and the paid program's value is the analysis on top) or a paid add-on. A paid add-on could not
-  be built into LinkScope (it would be GPL); it would have to feed LinkScope from outside, as an
-  external-program target.
 - A contact email in the UI's footer, once rinjanianalytics.com receives mail (on 2026-10-22 it had
   no MX record, so any address on it would bounce).
