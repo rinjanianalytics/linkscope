@@ -44,6 +44,12 @@ the webhook's signing secret and the mail password. None of them leave LinkScope
   webhooks or error messages.
 - The threshold programs' paths and the threshold mail address are not in the API either: it says
   only whether a target has them.
+- Threshold mail, a threshold program's arguments and its `THRESH_DESC` have every configured
+  secret replaced with `•••`, as the webhook body has, when a title, description or `PageTop[]`
+  quotes one.
+- The webhook client ignores proxy settings in its environment, so no proxy sees the signed body.
+- LinkScope warns at startup when alerts would travel in clear: threshold mail as plain SMTP to
+  another host, or an `http://` webhook to another host.
 - A test plants secrets in a configuration and searches every endpoint's output for them.
 
 ## The web UI

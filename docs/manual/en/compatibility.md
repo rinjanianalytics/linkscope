@@ -62,6 +62,12 @@ MRTG's quirks are kept where they change data. For example:
 - Target names and `Directory[]` may not contain `..` or path separators that leave the work
   directory.
 - Directories are created with mode 0755 (MRTG used 0777 minus the umask).
+- A `ThreshProg*[]` runs the file the configuration check found (a relative path is taken from
+  the directory LinkScope was started in). MRTG checked the path but ran a bare name through
+  `PATH`. The file must be executable.
+- A threshold program runs in a process group of its own; on its 60 second timeout the whole
+  group is stopped.
+- Threshold mail and program arguments have configured secrets replaced with `•••`.
 
 See [Security](security.md) for the full model.
 

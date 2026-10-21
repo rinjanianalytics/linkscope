@@ -245,7 +245,7 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
         ("threshprogi", true) | ("threshprogo", true) | ("threshprogoki", true) | ("threshprogoko", true)
         | ("hwthreshprogi", true) | ("hwthreshprogo", true) | ("hwthreshprogoki", true)
         | ("hwthreshprogoko", true) => rule!(
-            !v.is_empty() && Path::new(v).exists(),
+            !v.is_empty() && executable(Path::new(v)),
             format!("Threshold program {v} cannot be executed")
         ),
         ("threshmailaddress", true) | ("hwthreshmailaddress", true) => rule!(
@@ -296,4 +296,10 @@ pub fn web_hosts(v: &str) -> Option<Vec<String>> {
     let names: Vec<String> = v.split([',', ' ', '\t']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
     let name_ok = |n: &str| n == "*" || (n.len() <= 253 && n.split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')));
     (!names.is_empty() && names.iter().all(|n| name_ok(n))).then_some(names)
+}
+
+/// A regular file with an execute bit: what a threshold program must be to run.
+fn executable(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
 }
