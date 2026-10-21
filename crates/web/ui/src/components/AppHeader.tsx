@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { BookOpen, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,14 @@ export function AppHeader({ version, updatedAt, loading }: AppHeaderProps) {
                 : "Loading"}
             </span>
           </div>
+          <Link
+            href="/docs"
+            className="flex items-center gap-1.5 rounded-pill px-2 py-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <BookOpen aria-hidden className="size-4" />
+            <span className="hidden sm:inline">Docs</span>
+            <span className="sr-only sm:hidden">Docs</span>
+          </Link>
           <ThemeToggle />
         </div>
       </div>

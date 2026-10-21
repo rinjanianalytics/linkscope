@@ -211,6 +211,60 @@
   .mrtg-html img {
     @apply inline-block max-w-full;
   }
+
+  /* The manual (/docs): server-rendered Markdown, sanitized. */
+  .doc-prose {
+    @apply text-[0.95rem] leading-7 text-foreground;
+  }
+  .doc-prose > * + * {
+    @apply mt-4;
+  }
+  .doc-prose h2 {
+    @apply mt-10 scroll-mt-24 border-b border-border pb-2 text-xl font-semibold tracking-tight;
+  }
+  .doc-prose h3 {
+    @apply mt-8 scroll-mt-24 text-lg font-semibold tracking-tight;
+  }
+  .doc-prose h4 {
+    @apply mt-6 scroll-mt-24 font-semibold;
+  }
+  .doc-prose a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+  .doc-prose ul {
+    @apply list-disc pl-6;
+  }
+  .doc-prose ol {
+    @apply list-decimal pl-6;
+  }
+  .doc-prose li + li {
+    @apply mt-1;
+  }
+  .doc-prose li > ul,
+  .doc-prose li > ol {
+    @apply mt-1;
+  }
+  .doc-prose blockquote {
+    @apply border-l-2 border-primary pl-4 text-muted-foreground;
+  }
+  .doc-prose :not(pre) > code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
+  }
+  .doc-prose pre {
+    @apply overflow-x-auto rounded-lg border border-border bg-muted p-4 font-mono text-sm leading-6;
+  }
+  .doc-prose table {
+    @apply block w-full overflow-x-auto text-sm;
+  }
+  .doc-prose th {
+    @apply border-b border-border px-3 py-2 text-left align-bottom font-semibold;
+  }
+  .doc-prose td {
+    @apply border-b border-border px-3 py-2 text-left align-top;
+  }
+  .doc-prose hr {
+    @apply border-border;
+  }
 }
 
 /* Recharts: keep the focus ring on the chart surface consistent with the theme. */
