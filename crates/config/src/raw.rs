@@ -213,7 +213,8 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
         if is_comment_or_blank(&line) {
             continue;
         }
-        if line.len() >= 7 && line[..7].eq_ignore_ascii_case("supress") {
+        // `get`: byte 7 may fall inside a character (`Title[é]: x` panicked here).
+        if line.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("supress")) {
             line = format!("suppress{}", &line[7..]);
         }
 

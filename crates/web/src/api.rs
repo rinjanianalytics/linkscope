@@ -177,19 +177,20 @@ impl View {
     }
 }
 
-/// The [`View`] for `cfg`, cached per configuration.
+/// The [`View`] for `cfg`, cached per configuration. The cache holds the configuration itself,
+/// so its address cannot be taken by a later one: keyed on the bare address, a reloaded
+/// configuration could get a stale view (titles indexed out of bounds, a new secret not redacted).
 pub fn view(cfg: &std::sync::Arc<Config>) -> std::sync::Arc<View> {
     use std::sync::{Arc, Mutex};
-    static CACHE: Mutex<Option<(usize, Arc<View>)>> = Mutex::new(None);
-    let key = Arc::as_ptr(cfg) as usize;
+    static CACHE: Mutex<Option<(Arc<Config>, Arc<View>)>> = Mutex::new(None);
     let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((k, v)) = c.as_ref() {
-        if *k == key {
+        if Arc::ptr_eq(k, cfg) {
             return v.clone();
         }
     }
     let v = Arc::new(View::build(cfg));
-    *c = Some((key, v.clone()));
+    *c = Some((cfg.clone(), v.clone()));
     v
 }
 
@@ -528,6 +529,10 @@ pub async fn series(State(state): State<SharedState>, Path(name): Path<String>, 
     let peak = letters(&t.with_peak).contains(&pname);
     let unscaled = letters(&t.unscaled).contains(&pname);
     let fmt = Format::for_target(&t);
+    // Reading and summarizing a log is the costliest request (up to 4 MB parsed): a few at a
+    // time, so a flood of them waits instead of taking every blocking thread and the CPU.
+    static SERIES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+    let _turn = SERIES.acquire().await.map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "shutting down".to_string()))?;
     let res = tokio::task::spawn_blocking(move || {
         let path = dir.join(format!("{}.log", t.name));
         if !path.exists() {

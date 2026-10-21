@@ -107,7 +107,12 @@ export function DocsPage({ lang, slug }: { lang: string; slug: string }) {
   // body: an effect returns its cleanup only, and scrollIntoView may return a Promise.
   useEffect(() => {
     if (!page || page.slug !== slug) return
-    const id = decodeURIComponent(window.location.hash.slice(1))
+    let id = window.location.hash.slice(1)
+    try {
+      id = decodeURIComponent(id)
+    } catch {
+      // A malformed escape: look the raw text up instead of failing the page.
+    }
     const el = id ? document.getElementById(id) : null
     if (el) {
       el.scrollIntoView({ block: 'start' })

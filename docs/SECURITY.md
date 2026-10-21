@@ -38,3 +38,25 @@ service user, which is why the config files themselves are checked.
 * The web UI is read-only and has no login. It listens on loopback unless
   you choose otherwise; put a reverse proxy with authentication in front of
   it before exposing it.
+
+## Found and fixed before going public (2026-10-21)
+
+An assessment of LinkScope itself, by attacker position (anyone who reaches the web UI, a polled
+device or a spoofed reply, whoever influences the configuration, a local user, the outbound
+alerts), with `cargo audit` and `npm audit`. Fixed:
+
+| What | Who | Now |
+|---|---|---|
+| Half-sent HTTP requests held every file descriptor; the UI stopped and polling opened no socket and wrote no log | anyone who reaches the UI | at most 256 connections (the rest wait in the kernel's queue), a 10 s header timeout, 120 s per connection |
+| A value written with a huge exponent (`1e999999999`) passed MRTG's number check and was expanded to gigabytes, or aborted the daemon | a polled device | values judged by width (MRTG's 190 digits) before anything expands them |
+| snmp2 sets a v3 session's engine boots and time before checking a reply's authentication: one forged datagram broke the session until a restart | a spoofed reply | a v3 session whose replies are refused, or whose authentication fails, is opened again |
+| The `.ok` cache, which names devices by SNMP community, was readable by every local user | local users | `.ok` and `.alerts` written owner only, read without following symlinks, with a size cap |
+| A non-ASCII character at byte 6 or 7 of a config line panicked the reader; on a reload, the daemon died | the config | fixed; a reload that fails for any reason keeps the old configuration |
+| No Host check on a UI without a login (DNS rebinding) | a web page in a browser on the network | only IP addresses, `localhost` and `WebHosts:` names are answered |
+| The trust check looked only at the config's own directory, and only for world-writable | local users in a shared group | every directory on the way: root's or the user's, writable by no one else |
+| rustls-webpki 0.103.15, RUSTSEC-2026-0382 | a TLS man in the middle | 0.103.16 |
+| A slow mail server or webhook receiver made alert notices be dropped, though the alert was recorded as fired | whoever slows the receiver | notices wait in a bounded queue |
+| SNMPv3 settings with a privacy password but no authentication polled in clear | a config mistake | refused, as is an empty password |
+| A cached view keyed on a memory address could be stale after reloads (an out-of-bounds index, a new secret not redacted) | none (a latent bug) | the cache holds the configuration it was made for |
+| Unbounded expression and filter chains overflowed the stack; huge literals exhausted memory | the config, cfgmaker's operator | 1,000 parts at most; literals within 190 digits |
+| The costliest request (a graph's log summary) had no limit | anyone who reaches the UI | four at a time |

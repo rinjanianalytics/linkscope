@@ -25,8 +25,10 @@ commands, threshold programs). That is why the files themselves are checked.
 ### Trusted configuration files
 
 Every configuration file, including each included file, must be owned by root or by the account
-that runs LinkScope. Neither the file nor its directory may be writable by group or others (a
-sticky directory is fine). LinkScope checks the file it actually opened, not just the name.
+that runs LinkScope, and not writable by group or others. Every directory on the way to it must
+belong to root or that account and must not let anyone else rename its entries: not writable by
+others, nor by a group other than root's or the account's own, unless it is sticky. LinkScope
+checks the file it actually opened, not just the name.
 `--allow-insecure-config` loads such a file with a warning instead.
 
 ## Credentials stay out of every output
@@ -56,6 +58,12 @@ the webhook's signing secret and the mail password. None of them leave LinkScope
 - The UI is read-only and has **no login**. There is no web listener until you set `WebListen`
   or `--listen`. Bind it to loopback or a trusted management network, and put a reverse proxy
   with authentication in front of it before you expose it further.
+- It answers only to IP addresses, `localhost` and the names in `WebHosts:`, so a web page that
+  rebinds its own name to the UI's address (DNS rebinding) cannot read it from a browser.
+- It serves at most 256 connections at once (more wait in the kernel's queue and hold none of the
+  daemon's file descriptors, which the poller needs), a request's headers must arrive within 10
+  seconds, and a connection is closed after 120 seconds. A client holding connections open
+  cannot stop the polling. Logs are summarized for graphs a few at a time.
 
 ## Devices are not trusted
 
@@ -80,7 +88,13 @@ supported and recommended.
 
 - Each agent has a time budget per cycle (80 % of `Interval`).
 - Table walks are limited by time, rows and bytes.
-- Numbers longer than 64 characters are rejected.
+- Numbers longer than 64 characters are rejected, and so is any value wider than 190 digits
+  (MRTG's limit), judged before it is expanded: `1e999999999` is no number.
+- An SNMPv3 session whose replies are refused, or whose authentication fails, is opened again
+  with a new socket and a fresh discovery, so a forged reply cannot spoil it for good.
+- SNMPv3 settings that ask for less than they seem to (a privacy password without an
+  authentication password, a protocol without its password, an empty password) are an error,
+  never a quieter security level.
 - A stuck agent delays the cycle by at most its budget and cannot block the others.
 - A failure in one target is contained to that target.
 
@@ -96,6 +110,10 @@ file before a later fix). LinkScope:
 - refuses `Directory[]` subdirectories that are symlinks;
 - reads logs with `O_NOFOLLOW|O_NONBLOCK`, only if they are regular files, and at most 4 MB, so a
   FIFO or a device in place of a log cannot hang or exhaust the daemon.
+
+The `.ok` cache and the `.alerts` state are written owner only (mode 600), because the cache, like
+MRTG's, names each device by its SNMP community; a file left readable by others is written again
+owner only. Both are read like the logs (no symlink, no FIFO, a size cap).
 
 `WorkDir` itself is trusted: keep it writable only by the service account.
 

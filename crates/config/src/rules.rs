@@ -182,6 +182,10 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
             v.parse::<std::net::SocketAddr>().is_ok(),
             format!("{v} must be an address:port such as 127.0.0.1:8080 or [::1]:8080")
         ),
+        ("webhosts", false) => rule!(
+            web_hosts(v).is_some(),
+            format!("{v} must be host names separated by commas or spaces (or * for any)")
+        ),
         ("execshell", false) | ("webreadonly", false) => rule!(yes_no(v), format!("{v} must be yes or no")),
         // These may hold credentials: their messages never repeat the value.
         ("alertwebhook", false) => rule!(http_url(v), "must be an http:// or https:// URL".into()),
@@ -284,4 +288,12 @@ pub fn quickcheck(key: &str, per_target: bool, value: &str, file: &Path, line: u
 /// True if `key` is a keyword this implementation understands (for docs/tests).
 pub fn is_known(key: &str, per_target: bool) -> bool {
     !matches!(validate(key, per_target, ""), Err(ref m) if m == UNKNOWN)
+}
+
+/// `WebHosts:`: the host names the web UI answers to besides IP addresses and `localhost`,
+/// separated by commas or spaces, lowercase; `*` answers to any. `None` when one is not a name.
+pub fn web_hosts(v: &str) -> Option<Vec<String>> {
+    let names: Vec<String> = v.split([',', ' ', '\t']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
+    let name_ok = |n: &str| n == "*" || (n.len() <= 253 && n.split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')));
+    (!names.is_empty() && names.iter().all(|n| name_ok(n))).then_some(names)
 }

@@ -233,6 +233,7 @@ uses one is reported when the file is loaded.
 | Keyword | Default | Meaning |
 |---|---|---|
 | `WebListen` | none | **New.** Address and port of the web UI, the JSON API and `/metrics`, such as `127.0.0.1:8080` or `[::1]:8080`. `--listen` overrides it. Without either, there is no web listener. |
+| `WebHosts` | none | **New.** Host names the web UI answers to, besides IP addresses and `localhost`, separated by commas or spaces, such as `noc.example.com`. A request for any other name gets `421`: this keeps a web page that rebinds its own name to the UI's address from reading it. `*` answers to any name. |
 | `ExecShell` | no | **New.** `yes` lets external commands run through `/bin/sh`. |
 | `AlertWebhook` | none | **New.** An `http://` or `https://` URL that gets a signed POST when an alert fires or clears. Needs `AlertWebhookSecret`. |
 | `AlertWebhookSecret` | none | **New.** The signing key, at least 16 characters. Needs `AlertWebhook`. |
