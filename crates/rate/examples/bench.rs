@@ -17,10 +17,21 @@ fn main() {
     for _ in 0..800 {
         t += 300;
         c += 123_456_789;
-        log.update(t, &c.to_string(), &c.to_string(), i64::MAX, Mode::Counter, false);
+        log.update(
+            t,
+            &c.to_string(),
+            &c.to_string(),
+            i64::MAX,
+            Mode::Counter,
+            false,
+        );
     }
     let bytes = log.render_bytes();
-    println!("log: {} lines, {} bytes", log.history_len() + 1, bytes.len());
+    println!(
+        "log: {} lines, {} bytes",
+        log.history_len() + 1,
+        bytes.len()
+    );
 
     let start = Instant::now();
     for _ in 0..n {

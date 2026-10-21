@@ -44,7 +44,11 @@ impl FVal {
         }
     }
     fn bool(b: bool) -> FVal {
-        if b { FVal::Num(1.0) } else { FVal::Str(String::new()) }
+        if b {
+            FVal::Num(1.0)
+        } else {
+            FVal::Str(String::new())
+        }
     }
 }
 
@@ -95,7 +99,9 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 return Err("'$' must be followed by a variable name".into());
             }
             out.push(Tok::Var(c[st..i].iter().collect()));
-        } else if ch.is_ascii_digit() || (ch == '.' && c.get(i + 1).is_some_and(|d| d.is_ascii_digit())) {
+        } else if ch.is_ascii_digit()
+            || (ch == '.' && c.get(i + 1).is_some_and(|d| d.is_ascii_digit()))
+        {
             let st = i;
             while i < c.len() && (c[i].is_ascii_digit() || c[i] == '.' || c[i] == '_') {
                 i += 1;
@@ -119,7 +125,11 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                         i += 1;
                         break;
                     }
-                    Some('$') | Some('@') if q == '"' => return Err("interpolation in strings is not supported; use single quotes".into()),
+                    Some('$') | Some('@') if q == '"' => {
+                        return Err(
+                            "interpolation in strings is not supported; use single quotes".into(),
+                        );
+                    }
                     Some(x) => {
                         v.push(*x);
                         i += 1;
@@ -168,12 +178,20 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
             }
             let w: String = c[st..i].iter().collect();
             match w.as_str() {
-                "and" | "or" | "not" | "eq" | "ne" | "lt" | "gt" | "le" | "ge" => out.push(Tok::Op(w)),
-                _ => return Err(format!("'{w}' is not supported in --if-filter (only variables, comparisons and && || ! are)")),
+                "and" | "or" | "not" | "eq" | "ne" | "lt" | "gt" | "le" | "ge" => {
+                    out.push(Tok::Op(w))
+                }
+                _ => {
+                    return Err(format!(
+                        "'{w}' is not supported in --if-filter (only variables, comparisons and && || ! are)"
+                    ));
+                }
             }
         } else {
             let two: String = c[i..(i + 2).min(c.len())].iter().collect();
-            let op = ["&&", "||", "==", "!=", "<=", ">=", "=~", "!~"].iter().find(|o| two == **o);
+            let op = ["&&", "||", "==", "!=", "<=", ">=", "=~", "!~"]
+                .iter()
+                .find(|o| two == **o);
             if let Some(o) = op {
                 out.push(Tok::Op(o.to_string()));
                 i += 2;
@@ -233,7 +251,9 @@ impl P {
     }
     fn cmp(&mut self) -> Result<Node, String> {
         let l = self.atom()?;
-        let Some(op) = self.peek_op().map(str::to_string) else { return Ok(l) };
+        let Some(op) = self.peek_op().map(str::to_string) else {
+            return Ok(l);
+        };
         match op.as_str() {
             "==" | "!=" | "<" | "<=" | ">" | ">=" | "eq" | "ne" | "lt" | "gt" | "le" | "ge" => {
                 self.i += 1;
@@ -296,7 +316,10 @@ impl Filter {
         if p.i != p.t.len() {
             return Err(format!("unexpected {:?} in --if-filter", p.t[p.i]));
         }
-        Ok(Filter { root, source: src.to_string() })
+        Ok(Filter {
+            root,
+            source: src.to_string(),
+        })
     }
 
     /// Evaluate; unknown variables are an error (a typo should not silently
@@ -308,7 +331,10 @@ impl Filter {
 
 fn ev(n: &Node, vars: &HashMap<&str, FVal>) -> Result<FVal, String> {
     Ok(match n {
-        Node::Var(v) => vars.get(v.as_str()).cloned().ok_or_else(|| format!("unknown variable ${v} in --if-filter"))?,
+        Node::Var(v) => vars
+            .get(v.as_str())
+            .cloned()
+            .ok_or_else(|| format!("unknown variable ${v} in --if-filter"))?,
         Node::Lit(l) => l.clone(),
         Node::Not(e) => FVal::bool(!ev(e, vars)?.truthy()),
         Node::And(a, b) => {
@@ -368,7 +394,14 @@ mod tests {
 
     #[test]
     fn rejects_perl_code_and_typos() {
-        for bad in ["system('id')", "`id`", "$default; unlink 'x'", "qx(id)", "$x =~ s/a/b/", "\"$ENV{HOME}\""] {
+        for bad in [
+            "system('id')",
+            "`id`",
+            "$default; unlink 'x'",
+            "qx(id)",
+            "$x =~ s/a/b/",
+            "\"$ENV{HOME}\"",
+        ] {
             assert!(Filter::compile(bad).is_err(), "{bad}");
         }
         assert!(Filter::compile("$defualt").unwrap().eval(&vars()).is_err());

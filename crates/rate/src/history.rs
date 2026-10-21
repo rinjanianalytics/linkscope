@@ -123,5 +123,10 @@ pub(crate) fn next(h: &HistBuf, n: &mut usize, now: i64, steptime: i64) -> Agg {
         inr /= avc as f64;
         outr /= avc as f64;
     }
-    Agg { inr, outr, inmax, outmax }
+    Agg {
+        inr,
+        outr,
+        inmax,
+        outmax,
+    }
 }

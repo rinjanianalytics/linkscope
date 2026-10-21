@@ -29,7 +29,11 @@ fn polls() -> Vec<(i64, String, String)> {
         };
         a = (a + rng.below(10_000_000)) % (1 << 32);
         b += rng.below(1_000_000_007);
-        let ins = if i % 50 == 7 { "-1".to_string() } else { a.to_string() };
+        let ins = if i % 50 == 7 {
+            "-1".to_string()
+        } else {
+            a.to_string()
+        };
         v.push((t, ins, b.to_string()));
     }
     v
@@ -40,19 +44,37 @@ fn daemon_matches_reload_and_c_600_steps() {
     let polls = polls();
     let rdir = TempDir::new("daemon-r");
     let mut daemon = RateLog::load(rdir.path(), "t", polls[0].0).unwrap();
-    let opts = SummaryOpts { maxx: 400, peak: true, ..SummaryOpts::default() };
+    let opts = SummaryOpts {
+        maxx: 400,
+        peak: true,
+        ..SummaryOpts::default()
+    };
     for (i, (now, a, b)) in polls.iter().enumerate() {
-        assert_eq!(daemon.update(*now, a, b, i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
+        assert_eq!(
+            daemon.update(*now, a, b, i64::MAX, Mode::Counter, false),
+            UpdateOutcome::Updated
+        );
         // Cron style: load what the previous step saved, update, save.
         let mut cron = RateLog::load(rdir.path(), "t", *now).unwrap();
-        assert_eq!(cron.update(*now, a, b, i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
+        assert_eq!(
+            cron.update(*now, a, b, i64::MAX, Mode::Counter, false),
+            UpdateOutcome::Updated
+        );
         cron.save(rdir.path(), "t").unwrap();
         let d = daemon.render();
         assert_eq!(d, cron.render(), "step {i}: daemon and save/load differ");
-        assert_eq!(d.as_bytes(), std::fs::read(rdir.path().join("t.log")).unwrap(), "step {i}");
+        assert_eq!(
+            d.as_bytes(),
+            std::fs::read(rdir.path().join("t.log")).unwrap(),
+            "step {i}"
+        );
         assert_eq!(daemon.last_raw(), (a.as_str(), b.as_str()));
         for p in Period::ALL {
-            assert_eq!(daemon.summarize(*now, p, &opts), cron.summarize(*now, p, &opts), "step {i} {p:?}");
+            assert_eq!(
+                daemon.summarize(*now, p, &opts),
+                cron.summarize(*now, p, &opts),
+                "step {i} {p:?}"
+            );
         }
     }
 
@@ -62,9 +84,19 @@ fn daemon_matches_reload_and_c_600_steps() {
     let cdir = TempDir::new("daemon-c");
     let mut again = RateLog::load(cdir.path(), "t", polls[0].0).unwrap();
     for (i, (now, a, b)) in polls.iter().enumerate() {
-        let u = Upd { now: *now, input: a.clone(), output: b.clone(), abs_max: i64::MAX, mode: Mode::Counter, zero: false };
+        let u = Upd {
+            now: *now,
+            input: a.clone(),
+            output: b.clone(),
+            abs_max: i64::MAX,
+            mode: Mode::Counter,
+            zero: false,
+        };
         let imgs: Vec<Img> = if i % 100 == 99 {
-            Period::ALL.iter().map(|&period| Img { period, opts }).collect()
+            Period::ALL
+                .iter()
+                .map(|&period| Img { period, opts })
+                .collect()
         } else {
             Vec::new()
         };
@@ -72,9 +104,17 @@ fn daemon_matches_reload_and_c_600_steps() {
         assert!(ok);
         again.update(*now, a, b, i64::MAX, Mode::Counter, false);
         let c = std::fs::read(cdir.path().join("t.log")).unwrap();
-        assert!(again.render_bytes() == c, "step {i}: {}", first_diff(&again.render_bytes(), &c));
+        assert!(
+            again.render_bytes() == c,
+            "step {i}: {}",
+            first_diff(&again.render_bytes(), &c)
+        );
         for (k, im) in imgs.iter().enumerate() {
-            assert_eq!(summary_lines(&again.summarize(*now, im.period, &im.opts)), printed[k], "step {i}");
+            assert_eq!(
+                summary_lines(&again.summarize(*now, im.period, &im.opts)),
+                printed[k],
+                "step {i}"
+            );
         }
     }
     assert_eq!(again.render(), daemon.render());
@@ -90,17 +130,38 @@ fn summarize_after_update_uses_untruncated_history() {
     for i in 0..60u64 {
         t += 211 + (i % 4) as i64 * 37;
         c += 1_000_003 * (i % 5 + 1);
-        log.update(t, &c.to_string(), &c.to_string(), i64::MAX, Mode::Counter, false);
+        log.update(
+            t,
+            &c.to_string(),
+            &c.to_string(),
+            i64::MAX,
+            Mode::Counter,
+            false,
+        );
     }
     let reloaded = RateLog::from_bytes(Some(log.render().as_bytes()), None, t).unwrap();
-    let o = SummaryOpts { maxx: 50, ..SummaryOpts::default() };
+    let o = SummaryOpts {
+        maxx: 50,
+        ..SummaryOpts::default()
+    };
     let a = log.summarize(t, Period::Week, &o);
     let b = reloaded.summarize(t, Period::Week, &o);
-    assert_ne!(a.points, b.points, "un-truncated averages should differ from truncated ones");
+    assert_ne!(
+        a.points, b.points,
+        "un-truncated averages should differ from truncated ones"
+    );
     assert!(a.points.iter().any(|p| p.r#in.fract() != 0.0));
-    assert!(b.points.iter().all(|p| p.r#in.fract() == 0.0 || p.r#in.is_nan()) || b.points.len() == 50);
+    assert!(
+        b.points
+            .iter()
+            .all(|p| p.r#in.fract() == 0.0 || p.r#in.is_nan())
+            || b.points.len() == 50
+    );
     // An update that is refused as a time warp behaves like a fresh run.
     let mut warped = log.clone();
-    assert_eq!(warped.update(t - 5, "1", "1", i64::MAX, Mode::Counter, false), UpdateOutcome::TimeWarp);
+    assert_eq!(
+        warped.update(t - 5, "1", "1", i64::MAX, Mode::Counter, false),
+        UpdateOutcome::TimeWarp
+    );
     assert_eq!(warped.summarize(t, Period::Week, &o), b);
 }

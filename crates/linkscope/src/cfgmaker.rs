@@ -29,7 +29,8 @@ use crate::filter::{FVal, Filter};
 /// A regex compiled once per call site.
 macro_rules! re {
     ($p:expr) => {{
-        static R: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new($p).expect("static regex"));
+        static R: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| regex::Regex::new($p).expect("static regex"));
         &*R
     }};
 }
@@ -100,13 +101,26 @@ struct Parsed {
 fn flag_only(key: &str) -> bool {
     matches!(
         key,
-        "no-down" | "show-op-down" | "noreversedns" | "nointerfaces" | "interfaces" | "enable-ipv6" | "enablesnmpv3" | "help" | "version" | "use-16bit" | "nodefaultglobal"
+        "no-down"
+            | "show-op-down"
+            | "noreversedns"
+            | "nointerfaces"
+            | "interfaces"
+            | "enable-ipv6"
+            | "enablesnmpv3"
+            | "help"
+            | "version"
+            | "use-16bit"
+            | "nodefaultglobal"
     )
 }
 
 /// Options whose value is a secret.
 fn secret_option(key: &str) -> bool {
-    matches!(key, "authpassword" | "privpassword" | "authkey" | "privkey" | "community")
+    matches!(
+        key,
+        "authpassword" | "privpassword" | "authkey" | "privkey" | "community"
+    )
 }
 
 /// The command line for the generated file's header, without its secrets: the values of the
@@ -125,14 +139,19 @@ fn mask_secrets(args: &[String]) -> String {
             };
             let hide = secret_option(&key);
             match (inline, hide) {
-                (true, true) => out.push(format!("{}=XXXXX", a.split_once('=').map_or(a.as_str(), |(k, _)| k))),
+                (true, true) => out.push(format!(
+                    "{}=XXXXX",
+                    a.split_once('=').map_or(a.as_str(), |(k, _)| k)
+                )),
                 _ => out.push(a.clone()),
             }
-            if !inline && !flag_only(&key)
-                && let Some(v) = args.get(i + 1) {
-                    out.push(if hide { "XXXXX".to_string() } else { v.clone() });
-                    i += 1;
-                }
+            if !inline
+                && !flag_only(&key)
+                && let Some(v) = args.get(i + 1)
+            {
+                out.push(if hide { "XXXXX".to_string() } else { v.clone() });
+                i += 1;
+            }
         } else if let Some((_, router)) = a.rsplit_once('@') {
             out.push(format!("XXXXX@{router}"));
         } else {
@@ -149,7 +168,9 @@ const MAX_INTERFACES: usize = 50_000;
 
 fn interface_count_ok(n: usize, who: &str) -> Result<(), String> {
     if n > MAX_INTERFACES {
-        return Err(format!("{who} reports {n} interfaces, more than cfgmaker writes for one device ({MAX_INTERFACES}); check the device"));
+        return Err(format!(
+            "{who} reports {n} interfaces, more than cfgmaker writes for one device ({MAX_INTERFACES}); check the device"
+        ));
     }
     Ok(())
 }
@@ -178,7 +199,11 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                     Some(v) => Some(v),
                     None => {
                         i += 1;
-                        Some(args.get(i).cloned().ok_or(format!("--{key} needs a value"))?)
+                        Some(
+                            args.get(i)
+                                .cloned()
+                                .ok_or(format!("--{key} needs a value"))?,
+                        )
                     }
                 }
             } else {
@@ -213,11 +238,17 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                 "subdirs" => opts.subdirs = Some(v),
                 "nointerfaces" => opts.no_interfaces = true,
                 "interfaces" => opts.no_interfaces = false,
-                "zero-speed" => opts.zero_speed = Some(v.parse().map_err(|_| format!("zero-speed specified with non-integer speed: {v}"))?),
+                "zero-speed" => {
+                    opts.zero_speed =
+                        Some(v.parse().map_err(|_| {
+                            format!("zero-speed specified with non-integer speed: {v}")
+                        })?)
+                }
                 "enable-ipv6" => p.enable_ipv6 = true,
                 "enablesnmpv3" => p.enablesnmpv3 = true,
                 "use-16bit" | "nodefaultglobal" => {}
-                "username" | "authpassword" | "authprotocol" | "privpassword" | "privprotocol" | "contextname" | "contextengineid" | "authkey" | "privkey" => {
+                "username" | "authpassword" | "authprotocol" | "privpassword" | "privprotocol"
+                | "contextname" | "contextengineid" | "authkey" | "privkey" => {
                     if key == "username" {
                         p.enablesnmpv3 = true;
                     }
@@ -226,13 +257,20 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                 "debug" | "snmp-debug" => {}
                 other => return Err(format!("unknown option --{other}")),
             }
-            if key == "global" && opts.globals.last().is_some_and(|g| g.to_lowercase().contains("options[_]") && g.to_lowercase().contains("bits")) {
+            if key == "global"
+                && opts.globals.last().is_some_and(|g| {
+                    g.to_lowercase().contains("options[_]") && g.to_lowercase().contains("bits")
+                })
+            {
                 opts.bits = true;
             }
         } else {
             let (community, rest) = match a.rsplit_once('@') {
                 Some((c, r)) => (c.to_string(), r.to_string()),
-                None => (opts.community.clone().unwrap_or_else(|| "public".into()), a.clone()),
+                None => (
+                    opts.community.clone().unwrap_or_else(|| "public".into()),
+                    a.clone(),
+                ),
             };
             let (name, mut snmpopt) = if rest.starts_with('[') {
                 let end = rest.find(']').ok_or("unterminated IPv6 address")? + 1;
@@ -244,13 +282,24 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                 }
             };
             if snmpopt.is_empty()
-                && let Some(o) = &opts.snmp_options {
-                    snmpopt = if o.starts_with(':') { o.clone() } else { format!(":{o}") };
-                }
+                && let Some(o) = &opts.snmp_options
+            {
+                snmpopt = if o.starts_with(':') {
+                    o.clone()
+                } else {
+                    format!(":{o}")
+                };
+            }
             if name.is_empty() {
                 return Err(format!("no router name in '{a}'"));
             }
-            p.routers.push(RouterSpec { community, name, snmpopt, opts: opts.clone(), globals: std::mem::take(&mut opts.globals) });
+            p.routers.push(RouterSpec {
+                community,
+                name,
+                snmpopt,
+                opts: opts.clone(),
+                globals: std::mem::take(&mut opts.globals),
+            });
         }
         i += 1;
     }
@@ -329,13 +378,19 @@ fn alias_vendor(v: &str) -> bool {
 /// Replace control characters (including newlines) with spaces: a device
 /// string must never start a new config line.
 pub fn one_line(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
 }
 
 /// HTML-escape for PageTop/Title (MRTG escaped `& < >`; quotes are escaped
 /// too, and newlines can no longer occur).
 pub fn html_escape(s: &str) -> String {
-    one_line(s).replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    one_line(s)
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// `fmi` from cfgmaker: human readable speed.
@@ -350,11 +405,19 @@ fn fmi(number: u64, bits: bool) -> String {
     while digits as i64 - divm as i64 * 3 > 4 && divm < 3 {
         divm += 1;
     }
-    format!("{:.1} {}", n as f64 / 10f64.powi(divm as i32 * 3), short[divm])
+    format!(
+        "{:.1} {}",
+        n as f64 / 10f64.powi(divm as i32 * 3),
+        short[divm]
+    )
 }
 
 fn if_type_name(t: i64) -> String {
-    IF_TYPES.iter().find(|(n, _)| i64::from(*n) == t).map(|(_, s)| s.to_string()).unwrap_or_default()
+    IF_TYPES
+        .iter()
+        .find(|(n, _)| i64::from(*n) == t)
+        .map(|(_, s)| s.to_string())
+        .unwrap_or_default()
 }
 
 async fn reverse_dns(ip: &str) -> Option<String> {
@@ -370,7 +433,13 @@ async fn reverse_dns(ip: &str) -> Option<String> {
                 // SAFETY: sockaddr_in fits in sockaddr_storage.
                 let mut st: libc::sockaddr_storage = unsafe { std::mem::zeroed() };
                 // SAFETY: copying a sockaddr_in into a zeroed sockaddr_storage of larger size.
-                unsafe { std::ptr::copy_nonoverlapping(&s as *const _ as *const u8, &mut st as *mut _ as *mut u8, std::mem::size_of::<libc::sockaddr_in>()) };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        &s as *const _ as *const u8,
+                        &mut st as *mut _ as *mut u8,
+                        std::mem::size_of::<libc::sockaddr_in>(),
+                    )
+                };
                 (st, std::mem::size_of::<libc::sockaddr_in>())
             }
             std::net::SocketAddr::V6(_) => return None,
@@ -378,15 +447,30 @@ async fn reverse_dns(ip: &str) -> Option<String> {
         let mut host = [0 as libc::c_char; 256];
         // SAFETY: valid sockaddr pointer/length and output buffer.
         let rc = unsafe {
-            libc::getnameinfo(&ss as *const _ as *const libc::sockaddr, len as libc::socklen_t, host.as_mut_ptr(), host.len() as libc::socklen_t, std::ptr::null_mut(), 0, libc::NI_NAMEREQD)
+            libc::getnameinfo(
+                &ss as *const _ as *const libc::sockaddr,
+                len as libc::socklen_t,
+                host.as_mut_ptr(),
+                host.len() as libc::socklen_t,
+                std::ptr::null_mut(),
+                0,
+                libc::NI_NAMEREQD,
+            )
         };
         if rc != 0 {
             return None;
         }
         // SAFETY: getnameinfo NUL-terminates on success.
-        Some(unsafe { std::ffi::CStr::from_ptr(host.as_ptr()) }.to_string_lossy().into_owned())
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(host.as_ptr()) }
+                .to_string_lossy()
+                .into_owned(),
+        )
     });
-    tokio::time::timeout(Duration::from_secs(3), fut).await.ok()?.ok()?
+    tokio::time::timeout(Duration::from_secs(3), fut)
+        .await
+        .ok()?
+        .ok()?
 }
 
 fn endpoint_for(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool) -> Result<Endpoint, String> {
@@ -412,7 +496,12 @@ fn endpoint_for(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool) -> Result<Endp
     Endpoint::from_source(&src, false)
 }
 
-async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidResolver) -> Result<(DevInfo, BTreeMap<u64, IfInfo>), String> {
+async fn discover(
+    r: &RouterSpec,
+    snmpopt: &str,
+    enable_ipv6: bool,
+    oids: &OidResolver,
+) -> Result<(DevInfo, BTreeMap<u64, IfInfo>), String> {
     let ep = endpoint_for(r, snmpopt, enable_ipv6)?;
     let mut s = Session::open(&ep).await.map_err(|e| e.to_string())?;
     let sys = s.walk("1.3.6.1.2.1.1").await.map_err(|e| format!("{e}"))?;
@@ -450,21 +539,41 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
     let col = |name: &str| oids.resolve(name).expect("built-in OID");
     let w = |e: crate::snmp::SnmpError| e.to_string();
     walk_col(s.walk(&col("ifIndex")).await.map_err(w)?, &mut |_, _| {});
-    walk_col(s.walk(&col("ifType")).await.map_err(w)?, &mut |i, v| i.if_type = num(v).unwrap_or(-1));
-    walk_col(s.walk(&col("ifAdminStatus")).await.map_err(w)?, &mut |i, v| i.admin = num(v).unwrap_or(0));
-    walk_col(s.walk(&col("ifOperStatus")).await.map_err(w)?, &mut |i, v| i.oper = num(v).unwrap_or(0));
-    walk_col(s.walk(&col("ifMtu")).await.map_err(w)?, &mut |i, v| i.mtu = num(v));
+    walk_col(s.walk(&col("ifType")).await.map_err(w)?, &mut |i, v| {
+        i.if_type = num(v).unwrap_or(-1)
+    });
+    walk_col(
+        s.walk(&col("ifAdminStatus")).await.map_err(w)?,
+        &mut |i, v| i.admin = num(v).unwrap_or(0),
+    );
+    walk_col(
+        s.walk(&col("ifOperStatus")).await.map_err(w)?,
+        &mut |i, v| i.oper = num(v).unwrap_or(0),
+    );
+    walk_col(s.walk(&col("ifMtu")).await.map_err(w)?, &mut |i, v| {
+        i.mtu = num(v)
+    });
     if alias_vendor(&dev.vendor) {
-        walk_col(s.walk(&col("ifAlias")).await.unwrap_or_default(), &mut |i, v| i.alias = Some(crate::confcache::trim_ctl(&v.pretty()).to_string()));
+        walk_col(
+            s.walk(&col("ifAlias")).await.unwrap_or_default(),
+            &mut |i, v| i.alias = Some(crate::confcache::trim_ctl(&v.pretty()).to_string()),
+        );
     }
     let speeds = s.walk(&col("ifSpeed")).await.map_err(w)?;
     let high: HashMap<String, u64> = if ep.version != SnmpVersion::V1 {
-        s.walk(&col("ifHighSpeed")).await.unwrap_or_default().into_iter().filter_map(|(k, v)| v.number().and_then(|n| n.parse().ok()).map(|n| (k, n))).collect()
+        s.walk(&col("ifHighSpeed"))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(k, v)| v.number().and_then(|n| n.parse().ok()).map(|n| (k, n)))
+            .collect()
     } else {
         HashMap::new()
     };
     for (suffix, v) in speeds {
-        let Ok(idx) = suffix.parse::<u64>() else { continue };
+        let Ok(idx) = suffix.parse::<u64>() else {
+            continue;
+        };
         let mut sp = v.number().and_then(|n| n.parse::<u64>().ok());
         if ep.version != SnmpVersion::V1 && (sp.is_none() || sp == Some(u64::from(u32::MAX))) {
             sp = high.get(&suffix).and_then(|h| h.checked_mul(1_000_000));
@@ -474,7 +583,9 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
 
     // Unique identifiers, MRTG confcache style: a value shared by two
     // interfaces cannot identify either of them.
-    let mut uniq = |rows: Vec<(String, Val)>, key_of_row: &dyn Fn(&str, &Val) -> Option<(String, u64)>, set: &dyn Fn(&mut IfInfo, String)| {
+    let mut uniq = |rows: Vec<(String, Val)>,
+                    key_of_row: &dyn Fn(&str, &Val) -> Option<(String, u64)>,
+                    set: &dyn Fn(&mut IfInfo, String)| {
         let mut seen: HashMap<String, Option<u64>> = HashMap::new();
         let mut order: Vec<String> = Vec::new();
         for (suffix, v) in &rows {
@@ -493,18 +604,34 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
         }
         for k in order {
             if let Some(Some(idx)) = seen.get(&k)
-                && let Some(i) = ifs.get_mut(idx) {
-                    set(i, k);
-                }
+                && let Some(i) = ifs.get_mut(idx)
+            {
+                set(i, k);
+            }
         }
     };
     let text_key = |suffix: &str, v: &Val| -> Option<(String, u64)> {
-        let t: String = crate::confcache::trim_ctl(&v.pretty()).chars().map(|c| if c <= ' ' { ' ' } else { c }).collect();
+        let t: String = crate::confcache::trim_ctl(&v.pretty())
+            .chars()
+            .map(|c| if c <= ' ' { ' ' } else { c })
+            .collect();
         Some((t, suffix.parse().ok()?))
     };
-    uniq(s.walk(&col("ifName")).await.unwrap_or_default(), &text_key, &|i, k| i.name = Some(k));
-    uniq(s.walk(&col("ifDescr")).await.unwrap_or_default(), &text_key, &|i, k| i.descr = Some(k));
-    uniq(s.walk(&col("ifType")).await.unwrap_or_default(), &text_key, &|i, k| i.type_key = Some(k));
+    uniq(
+        s.walk(&col("ifName")).await.unwrap_or_default(),
+        &text_key,
+        &|i, k| i.name = Some(k),
+    );
+    uniq(
+        s.walk(&col("ifDescr")).await.unwrap_or_default(),
+        &text_key,
+        &|i, k| i.descr = Some(k),
+    );
+    uniq(
+        s.walk(&col("ifType")).await.unwrap_or_default(),
+        &text_key,
+        &|i, k| i.type_key = Some(k),
+    );
     uniq(
         s.walk(&col("ipAdEntIfIndex")).await.unwrap_or_default(),
         &|suffix, v| Some((suffix.to_string(), v.number()?.parse().ok()?)),
@@ -517,7 +644,9 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
     uniq(
         s.walk(&col("ifPhysAddress")).await.unwrap_or_default(),
         &|suffix, v| match v {
-            Val::Str(b) if !b.is_empty() => Some((crate::confcache::mac_string(b), suffix.parse().ok()?)),
+            Val::Str(b) if !b.is_empty() => {
+                Some((crate::confcache::mac_string(b), suffix.parse().ok()?))
+            }
             _ => None,
         },
         &|i, k| i.eth = Some(k),
@@ -528,24 +657,46 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
     // Counter check (IsCounterBroken), batched.
     let idxs: Vec<u64> = ifs.keys().copied().collect();
     if ep.version != SnmpVersion::V1 {
-        let q: Vec<String> = idxs.iter().flat_map(|i| [format!("{}.{i}", col("ifHighSpeed")), format!("{}.{i}", col("ifHCInOctets"))]).collect();
+        let q: Vec<String> = idxs
+            .iter()
+            .flat_map(|i| {
+                [
+                    format!("{}.{i}", col("ifHighSpeed")),
+                    format!("{}.{i}", col("ifHCInOctets")),
+                ]
+            })
+            .collect();
         let v = s.get(&q).await.unwrap_or_default();
         for (k, idx) in idxs.iter().enumerate() {
-            let ok = v.get(2 * k).is_some_and(|x| x.is_present()) && v.get(2 * k + 1).and_then(|x| x.number()).is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()));
+            let ok = v.get(2 * k).is_some_and(|x| x.is_present())
+                && v.get(2 * k + 1)
+                    .and_then(|x| x.number())
+                    .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()));
             if !ok {
                 ifs.get_mut(idx).expect("known").nohc = true;
             }
         }
     }
-    let need_v1: Vec<u64> = idxs.iter().copied().filter(|i| ep.version == SnmpVersion::V1 || ifs[i].nohc).collect();
+    let need_v1: Vec<u64> = idxs
+        .iter()
+        .copied()
+        .filter(|i| ep.version == SnmpVersion::V1 || ifs[i].nohc)
+        .collect();
     if !need_v1.is_empty() {
-        let q: Vec<String> = need_v1.iter().map(|i| format!("{}.{i}", col("ifInOctets"))).collect();
+        let q: Vec<String> = need_v1
+            .iter()
+            .map(|i| format!("{}.{i}", col("ifInOctets")))
+            .collect();
         match s.get(&q).await {
             Ok(v) => {
                 for (k, idx) in need_v1.iter().enumerate() {
-                    let ok = v.get(k).and_then(|x| x.number()).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+                    let ok = v
+                        .get(k)
+                        .and_then(|x| x.number())
+                        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
                     if !ok {
-                        ifs.get_mut(idx).expect("known").counter_problem = Some(format!("No counter exists for {idx}"));
+                        ifs.get_mut(idx).expect("known").counter_problem =
+                            Some(format!("No counter exists for {idx}"));
                     }
                 }
             }
@@ -558,7 +709,10 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
     }
     if !r.opts.noreversedns {
         // Look names up concurrently (each lookup has a 3 s limit).
-        let ips: Vec<(u64, String)> = ifs.iter().filter_map(|(k, i)| i.ip.clone().map(|ip| (*k, ip))).collect();
+        let ips: Vec<(u64, String)> = ifs
+            .iter()
+            .filter_map(|(k, i)| i.ip.clone().map(|ip| (*k, ip)))
+            .collect();
         let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(16));
         let mut set = tokio::task::JoinSet::new();
         for (k, ip) in ips {
@@ -588,30 +742,65 @@ fn trim_if_ref(r: &str) -> String {
     let s = s.trim_matches('_');
     let s = if s.is_empty() { "_" } else { s };
     // Characters that would break `Key[name]:` lines or file names.
-    s.chars().map(|c| if c.is_control() || matches!(c, '[' | ']' | '`' | '"' | '\'') { '_' } else { c }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '[' | ']' | '`' | '"' | '\'') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 /// Build an interface reference for `Target[]`, or `None` if the value
 /// cannot be represented safely.
 fn safe_ref(prefix: &str, value: &str) -> Option<String> {
-    if value.is_empty() || value.chars().any(|c| c.is_control() || c == '`' || c == '\\') {
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|c| c.is_control() || c == '`' || c == '\\')
+    {
         return None;
     }
-    let esc: String = value.chars().flat_map(|c| if matches!(c, '&' | ' ' | ':' | '@') { vec!['\\', c] } else { vec![c] }).collect();
+    let esc: String = value
+        .chars()
+        .flat_map(|c| {
+            if matches!(c, '&' | ' ' | ':' | '@') {
+                vec!['\\', c]
+            } else {
+                vec![c]
+            }
+        })
+        .collect();
     Some(format!("{prefix}{esc}"))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, ifs: &BTreeMap<u64, IfInfo>, enable_ipv6: bool, ipv4only: bool) -> Result<(), String> {
+fn gen_router(
+    conf: &mut String,
+    r: &RouterSpec,
+    snmpopt: &str,
+    dev: &DevInfo,
+    ifs: &BTreeMap<u64, IfInfo>,
+    enable_ipv6: bool,
+    ipv4only: bool,
+) -> Result<(), String> {
     let sysname = one_line(&dev.name);
     let comment_descr = one_line(&dev.descr);
-    let community = r.community.replace('\\', "\\\\").replace('@', "\\@").replace(' ', "\\ ");
+    let community = r
+        .community
+        .replace('\\', "\\\\")
+        .replace('@', "\\@")
+        .replace(' ', "\\ ");
     let router_name = match &r.opts.dns_domain {
         Some(d) if !d.is_empty() => format!("{}.{d}", r.name),
         _ => r.name.clone(),
     };
     let router_connect = format!("{community}@{router_name}{snmpopt}");
-    let v3 = SnmpConn::parse(snmpopt).map(|c| c.version == SnmpVersion::V3).unwrap_or(false);
+    let v3 = SnmpConn::parse(snmpopt)
+        .map(|c| c.version == SnmpVersion::V3)
+        .unwrap_or(false);
     let v3options = r
         .opts
         .v3
@@ -621,8 +810,13 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
         .collect::<Vec<_>>()
         .join(",");
     let directory = r.opts.subdirs.as_ref().map(|f| {
-        let snmp_name: String = sysname.chars().map(|c| if c == '/' || c.is_control() { '_' } else { c }).collect();
-        f.replace("HOSTNAME", &router_name).replace("SNMPNAME", &snmp_name).replace("..", "_")
+        let snmp_name: String = sysname
+            .chars()
+            .map(|c| if c == '/' || c.is_control() { '_' } else { c })
+            .collect();
+        f.replace("HOSTNAME", &router_name)
+            .replace("SNMPNAME", &snmp_name)
+            .replace("..", "_")
     });
     conf.push_str(&format!(
         "\n######################################################################\n# System: {sysname}\n# Description: {comment_descr}\n# Contact: {}\n# Location: {}\n######################################################################\n\n\n",
@@ -632,7 +826,12 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
     if r.opts.no_interfaces {
         return Ok(());
     }
-    let filter = r.opts.if_filter.as_deref().map(Filter::compile).transpose()?;
+    let filter = r
+        .opts
+        .if_filter
+        .as_deref()
+        .map(Filter::compile)
+        .transpose()?;
     let cisco = dev.vendor == "cisco";
     for (&idx, i) in ifs {
         let mut prob: Vec<String> = Vec::new();
@@ -701,9 +900,10 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
         let default = default_ifstate && default_iftype;
         let mut speed = i.speed.unwrap_or(0);
         if speed == 0
-            && let Some(z) = r.opts.zero_speed {
-                speed = z;
-            }
+            && let Some(z) = r.opts.zero_speed
+        {
+            speed = z;
+        }
         if speed == 0 {
             speed = match (dev.vendor.as_str(), i.if_type) {
                 ("foundry", 194) => 155_000_000,
@@ -718,7 +918,10 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
             };
         }
         if let Some(p) = &i.counter_problem {
-            prob.push(format!("got '{}' from interface when trying to query", one_line(p)));
+            prob.push(format!(
+                "got '{}' from interface when trying to query",
+                one_line(p)
+            ));
             if_ok = false;
         }
 
@@ -759,7 +962,8 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
         let if_speed = speed / 8;
         let if_speed_str = fmi(if_speed, r.opts.bits);
         let if_type_desc = if_type_name(i.if_type);
-        let if_snmp_descr = one_line(i.descr.as_deref().unwrap_or("No Description")).replace(' ', "-");
+        let if_snmp_descr =
+            one_line(i.descr.as_deref().unwrap_or("No Description")).replace(' ', "-");
         let if_snmp_name = one_line(i.name.as_deref().unwrap_or("No Name"));
         let if_snmp_alias = one_line(i.alias.as_deref().unwrap_or(""));
         let if_ip = i.ip.clone().unwrap_or_else(|| "No Ip".into());
@@ -773,11 +977,18 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
                     "ip" => i.ip.clone(),
                     "eth" => i.eth.clone(),
                     "descr" | "desc" => i.descr.as_ref().map(|_| if_snmp_descr.clone()),
-                    "alias" => i.alias.as_ref().map(|_| format!("{if_snmp_descr} {if_snmp_alias} ")),
+                    "alias" => i
+                        .alias
+                        .as_ref()
+                        .map(|_| format!("{if_snmp_descr} {if_snmp_alias} ")),
                     "name" => i.name.as_ref().map(|n| format!("#{n}")),
                     "type" => i.type_key.as_ref().map(|t| format!("%{t}")),
                     "nr" => Some(format!("Interface {idx}")),
-                    "" => Some(if if_type_desc.is_empty() { if_snmp_descr.clone() } else { if_type_desc.clone() }),
+                    "" => Some(if if_type_desc.is_empty() {
+                        if_snmp_descr.clone()
+                    } else {
+                        if_type_desc.clone()
+                    }),
                     "catname" | "ppname" => None,
                     other => return Err(format!("Invalid value for --ifdesc: '{spec} ({other})'")),
                 };
@@ -788,17 +999,32 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
             }
         }
         let if_title_desc = {
-            let t = re!(r"\\([:@\\/# ])").replace_all(&if_title_desc, "$1").into_owned();
-            if t.is_empty() { if_snmp_name.clone() } else { one_line(&t) }
+            let t = re!(r"\\([:@\\/# ])")
+                .replace_all(&if_title_desc, "$1")
+                .into_owned();
+            if t.is_empty() {
+                if_snmp_name.clone()
+            } else {
+                one_line(&t)
+            }
         };
         let if_description = format!("{if_snmp_descr} {if_snmp_alias} ");
-        let html_title = format!("{}{} -- {}", html_escape(&desc_prefix), html_escape(&if_title_desc), html_escape(&sysname));
+        let html_title = format!(
+            "{}{} -- {}",
+            html_escape(&desc_prefix),
+            html_escape(&if_title_desc),
+            html_escape(&sysname)
+        );
 
         let mut target = format!("Target[{target_name}]: {if_ref}:{router_connect}\n");
         if v3 {
             target.push_str(&format!("SnmpOptions[{target_name}]: {v3options}\n"));
         }
-        if i.nohc && SnmpConn::parse(snmpopt).map(|c| c.version != SnmpVersion::V1).unwrap_or(false) {
+        if i.nohc
+            && SnmpConn::parse(snmpopt)
+                .map(|c| c.version != SnmpVersion::V1)
+                .unwrap_or(false)
+        {
             target.push_str(&format!("noHC[{target_name}]: yes\n"));
         }
         target.push_str(&format!(
@@ -845,15 +1071,32 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
                 ("if_type_num", FVal::Num(t as f64)),
                 ("if_is_ethernet", b([6, 7, 26, 62, 69, 117].contains(&t))),
                 ("if_is_isdn", b([20, 21, 63, 75, 76, 77].contains(&t))),
-                ("if_is_dialup", b([20, 21, 63, 75, 76, 77, 23, 81, 82, 108].contains(&t))),
-                ("if_is_atm", b([37, 49, 107, 105, 106, 114, 134].contains(&t))),
+                (
+                    "if_is_dialup",
+                    b([20, 21, 63, 75, 76, 77, 23, 81, 82, 108].contains(&t)),
+                ),
+                (
+                    "if_is_atm",
+                    b([37, 49, 107, 105, 106, 114, 134].contains(&t)),
+                ),
                 ("if_is_wan", b([22, 30, 32, 39, 44, 46].contains(&t))),
-                ("if_is_lan", b([6, 7, 26, 62, 69, 117, 8, 9, 11, 15, 55, 59, 60, 115].contains(&t))),
+                (
+                    "if_is_lan",
+                    b([6, 7, 26, 62, 69, 117, 8, 9, 11, 15, 55, 59, 60, 115].contains(&t)),
+                ),
                 ("if_is_dsl", b([94, 95, 96, 97].contains(&t))),
                 ("if_is_loopback", b(t == 24)),
-                ("if_is_ciscovlan", b(cisco && re!(r"(?i)^(unrouted )?[- ]?VLAN[- ]?\d*$").is_match(&descr_raw))),
+                (
+                    "if_is_ciscovlan",
+                    b(cisco && re!(r"(?i)^(unrouted )?[- ]?VLAN[- ]?\d*$").is_match(&descr_raw)),
+                ),
                 ("if_index", FVal::Num(idx as f64)),
-                ("if_MTU", i.mtu.map(|m| FVal::Num(m as f64)).unwrap_or_else(|| s("No MTU"))),
+                (
+                    "if_MTU",
+                    i.mtu
+                        .map(|m| FVal::Num(m as f64))
+                        .unwrap_or_else(|| s("No MTU")),
+                ),
                 ("if_eth", s(&if_eth)),
                 ("if_ip", s(&if_ip)),
                 ("if_snmp_descr", s(&if_snmp_descr)),
@@ -895,7 +1138,12 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
         }
         let mut lines = format!("\n{target}");
         if !if_ok {
-            lines = lines.lines().map(|l| format!("# {l}")).collect::<Vec<_>>().join("\n") + "\n";
+            lines = lines
+                .lines()
+                .map(|l| format!("# {l}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n";
         }
         conf.push_str(&lines);
         conf.push_str("\n\n");
@@ -909,17 +1157,33 @@ async fn run(p: Parsed) -> Result<String, String> {
     conf.push_str(
         "\n### Global Config Options\n\n#  for UNIX\n# WorkDir: /home/http/mrtg\n\n#  for NT\n# WorkDir: c:\\mrtgdata\n\n#  for several Linux, like Debian, RHEL and it's derivatives\n# WorkDir: /var/www/html/mrtg\n\n#  for others Linux\n# WorkDir: /srv/http/mrtg\n\n### Global Defaults\n\n#  to get bits instead of bytes and graphs growing to the right\n# Options[_]: growright, bits\n\n",
     );
-    conf.push_str(if p.enable_ipv6 { "EnableIPv6: yes\n" } else { "EnableIPv6: no\n" });
+    conf.push_str(if p.enable_ipv6 {
+        "EnableIPv6: yes\n"
+    } else {
+        "EnableIPv6: no\n"
+    });
     for r in &p.routers {
         for g in &r.globals {
             conf.push_str(&format!("{}\n", one_line(g)));
         }
         let snmpopt = r.snmpopt.clone();
         match discover(r, &snmpopt, p.enable_ipv6, &oids).await {
-            Ok((dev, ifs)) => gen_router(&mut conf, r, &snmpopt, &dev, &ifs, p.enable_ipv6, !p.enable_ipv6)?,
+            Ok((dev, ifs)) => gen_router(
+                &mut conf,
+                r,
+                &snmpopt,
+                &dev,
+                &ifs,
+                p.enable_ipv6,
+                !p.enable_ipv6,
+            )?,
             Err(e) => {
                 eprintln!("WARNING: Skipping {}{} because: {e}", r.name, snmpopt);
-                conf.push_str(&format!("\n### {}: skipped, no SNMP answer ({})\n", one_line(&r.name), one_line(&e)));
+                conf.push_str(&format!(
+                    "\n### {}: skipped, no SNMP answer ({})\n",
+                    one_line(&r.name),
+                    one_line(&e)
+                ));
             }
         }
     }
@@ -947,7 +1211,10 @@ pub fn main(args: Vec<String>) -> ExitCode {
         return ExitCode::from(2);
     }
     let output = parsed.output.clone();
-    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             eprintln!("ERROR: {e}");
@@ -958,7 +1225,11 @@ pub fn main(args: Vec<String>) -> ExitCode {
         Ok(conf) => {
             match output {
                 Some(path) => {
-                    if let Err(e) = crate::fsutil::write_atomic(std::path::Path::new(&path), conf.as_bytes(), 0o640) {
+                    if let Err(e) = crate::fsutil::write_atomic(
+                        std::path::Path::new(&path),
+                        conf.as_bytes(),
+                        0o640,
+                    ) {
                         eprintln!("ERROR: creating {path}: {e}");
                         return ExitCode::from(1);
                     }
@@ -980,11 +1251,20 @@ mod tests {
 
     #[test]
     fn device_strings_cannot_inject() {
-        assert_eq!(one_line("evil\nTarget[x]: `id`:p@h"), "evil Target[x]: `id`:p@h");
-        assert_eq!(safe_ref("#", "Gi0/1 x:y@z&w").unwrap(), r"#Gi0/1\ x\:y\@z\&w");
+        assert_eq!(
+            one_line("evil\nTarget[x]: `id`:p@h"),
+            "evil Target[x]: `id`:p@h"
+        );
+        assert_eq!(
+            safe_ref("#", "Gi0/1 x:y@z&w").unwrap(),
+            r"#Gi0/1\ x\:y\@z\&w"
+        );
         assert!(safe_ref("#", "`id`").is_none());
         assert!(safe_ref("#", "a\nb").is_none());
-        assert_eq!(html_escape("<script>\"x\"&"), "&lt;script&gt;&quot;x&quot;&amp;");
+        assert_eq!(
+            html_escape("<script>\"x\"&"),
+            "&lt;script&gt;&quot;x&quot;&amp;"
+        );
         assert_eq!(trim_if_ref("#Gi0/1"), "Gi0_1");
         assert_eq!(trim_if_ref("#[a]`b`"), "_a__b_");
     }
@@ -998,7 +1278,20 @@ mod tests {
 
     #[test]
     fn args_and_secret_masking() {
-        let a: Vec<String> = ["cfgmaker", "--global", "WorkDir: /x", "--ifref=name", "--username=u", "--authpassword", "s3cret", "pub@r1:161::::2", "r2"].iter().map(|s| s.to_string()).collect();
+        let a: Vec<String> = [
+            "cfgmaker",
+            "--global",
+            "WorkDir: /x",
+            "--ifref=name",
+            "--username=u",
+            "--authpassword",
+            "s3cret",
+            "pub@r1:161::::2",
+            "r2",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let p = parse_args(&a).unwrap().unwrap();
         assert_eq!(p.routers.len(), 2);
         assert_eq!(p.routers[0].community, "pub");
@@ -1009,8 +1302,17 @@ mod tests {
         // Keys, communities (as options and in front of a router) and inline values too; an option's
         // value that holds an `@` is not a router.
         let a: Vec<String> = [
-            "cfgmaker", "--authkey", "0xKEY1", "--privkey=0xKEY2", "--community", "comm1", "--community=comm2", "--global",
-            "ThreshMailAddress[_]: noc@example.com", "comm3@r1:::::2", "secret\\@x@r2",
+            "cfgmaker",
+            "--authkey",
+            "0xKEY1",
+            "--privkey=0xKEY2",
+            "--community",
+            "comm1",
+            "--community=comm2",
+            "--global",
+            "ThreshMailAddress[_]: noc@example.com",
+            "comm3@r1:::::2",
+            "secret\\@x@r2",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -1019,9 +1321,16 @@ mod tests {
         for secret in ["0xKEY1", "0xKEY2", "comm1", "comm2", "comm3", "secret"] {
             assert!(!m.contains(secret), "{secret} in {m}");
         }
-        assert!(m.contains("noc@example.com") && m.contains("XXXXX@r1:::::2") && m.contains("XXXXX@r2"), "{m}");
+        assert!(
+            m.contains("noc@example.com") && m.contains("XXXXX@r1:::::2") && m.contains("XXXXX@r2"),
+            "{m}"
+        );
         assert!(interface_count_ok(MAX_INTERFACES, "r1").is_ok());
-        assert!(interface_count_ok(MAX_INTERFACES + 1, "r1").unwrap_err().contains("more than cfgmaker writes"));
+        assert!(
+            interface_count_ok(MAX_INTERFACES + 1, "r1")
+                .unwrap_err()
+                .contains("more than cfgmaker writes")
+        );
         assert!(parse_args(&["cfgmaker".into(), "--if-template=x".into(), "r".into()]).is_err());
     }
 }
@@ -1045,25 +1354,36 @@ mod injection_tests {
         let mut ifs = BTreeMap::new();
         for (idx, name, descr, alias) in [
             (1u64, "`cmd`", "eth0\nTarget[evil]: `cmd`:a@b", "x"),
-            (2, "Gi0/2 a:b@c", "GigabitEthernet0/2", "uplink\n PageTop[z]: <b>"),
+            (
+                2,
+                "Gi0/2 a:b@c",
+                "GigabitEthernet0/2",
+                "uplink\n PageTop[z]: <b>",
+            ),
             (3, "Gi0/3", "GigabitEthernet0/3", "ok"),
         ] {
-            ifs.insert(idx, IfInfo {
-                if_type: 6,
-                admin: 1,
-                oper: 1,
-                speed: Some(1_000_000_000),
-                name: Some(name.into()),
-                descr: Some(descr.into()),
-                alias: Some(alias.into()),
-                ..Default::default()
-            });
+            ifs.insert(
+                idx,
+                IfInfo {
+                    if_type: 6,
+                    admin: 1,
+                    oper: 1,
+                    speed: Some(1_000_000_000),
+                    name: Some(name.into()),
+                    descr: Some(descr.into()),
+                    alias: Some(alias.into()),
+                    ..Default::default()
+                },
+            );
         }
         let spec = RouterSpec {
             community: "pub".into(),
             name: "r1".into(),
             snmpopt: "::::2".into(),
-            opts: Opts { ifdesc: Some("alias".into()), ..Default::default() },
+            opts: Opts {
+                ifdesc: Some("alias".into()),
+                ..Default::default()
+            },
             globals: vec![],
         };
         let mut conf = String::from("WorkDir: @WORK@\n");
@@ -1071,14 +1391,35 @@ mod injection_tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("gen.cfg");
         std::fs::write(&path, conf.replace("@WORK@", &dir.path().to_string_lossy())).unwrap();
-        let cfg = linkscope_config::load(&path, &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off }, &linkscope_config::CheckOptions::default())
-            .unwrap_or_else(|e| panic!("generated config must load: {e}\n{conf}"));
+        let cfg = linkscope_config::load(
+            &path,
+            &linkscope_config::ReadOptions {
+                trust: linkscope_config::TrustPolicy::Off,
+            },
+            &linkscope_config::CheckOptions::default(),
+        )
+        .unwrap_or_else(|e| panic!("generated config must load: {e}\n{conf}"));
         assert_eq!(cfg.targets.len(), 3, "{conf}");
-        assert!(cfg.sources.iter().all(|s| matches!(s, linkscope_config::Source::Snmp(_))), "no external commands allowed: {conf}");
+        assert!(
+            cfg.sources
+                .iter()
+                .all(|s| matches!(s, linkscope_config::Source::Snmp(_))),
+            "no external commands allowed: {conf}"
+        );
         // The backtick name is not used as a reference; the index is.
-        assert!(cfg.targets.iter().any(|t| t.target_text.starts_with("1:pub@r1")), "{conf}");
+        assert!(
+            cfg.targets
+                .iter()
+                .any(|t| t.target_text.starts_with("1:pub@r1")),
+            "{conf}"
+        );
         // Comments may echo the raw value; nothing that is parsed or rendered may.
-        assert!(conf.lines().filter(|l| !l.starts_with('#')).all(|l| !l.contains("<script>")), "{conf}");
+        assert!(
+            conf.lines()
+                .filter(|l| !l.starts_with('#'))
+                .all(|l| !l.contains("<script>")),
+            "{conf}"
+        );
         for t in &cfg.targets {
             assert!(!t.title.contains('\n'));
         }

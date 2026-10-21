@@ -19,12 +19,12 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::Serialize;
 
+use crate::ConfigError;
 use crate::expr::Expr;
 use crate::perlhash::{self, SnmpOptions};
 use crate::raw::RawConfig;
 use crate::rules::{perl_int, perl_num};
 use crate::target::{Source, SourceTable};
-use crate::ConfigError;
 
 /// Options for [`check`].
 #[derive(Debug, Clone, Default)]
@@ -115,9 +115,31 @@ pub struct Options {
 }
 
 const KNOWN_OPTIONS: &[&str] = &[
-    "growright", "bits", "noinfo", "absolute", "gauge", "nopercent", "avgpeak", "derive", "integer",
-    "perhour", "perminute", "transparent", "dorelpercent", "unknaszero", "withzeroes", "noborder",
-    "noarrow", "noi", "noo", "nobanner", "nolegend", "logscale", "secondmean", "pngdate", "printrouter",
+    "growright",
+    "bits",
+    "noinfo",
+    "absolute",
+    "gauge",
+    "nopercent",
+    "avgpeak",
+    "derive",
+    "integer",
+    "perhour",
+    "perminute",
+    "transparent",
+    "dorelpercent",
+    "unknaszero",
+    "withzeroes",
+    "noborder",
+    "noarrow",
+    "noi",
+    "noo",
+    "nobanner",
+    "nolegend",
+    "logscale",
+    "secondmean",
+    "pngdate",
+    "printrouter",
     "expscale",
 ];
 
@@ -205,7 +227,9 @@ pub fn program_path(v: String) -> String {
     if p.is_absolute() {
         return v;
     }
-    std::env::current_dir().map(|d| d.join(p).to_string_lossy().into_owned()).unwrap_or(v)
+    std::env::current_dir()
+        .map(|d| d.join(p).to_string_lossy().into_owned())
+        .unwrap_or(v)
 }
 
 /// One graphed target (`Target[name]` and its companion keywords).
@@ -286,7 +310,11 @@ pub struct Config {
 }
 
 fn ensure_sl(p: &str) -> String {
-    if p.ends_with('/') { p.to_string() } else { format!("{p}/") }
+    if p.ends_with('/') {
+        p.to_string()
+    } else {
+        format!("{p}/")
+    }
 }
 
 fn mkdirs(dir: &Path, opts: &CheckOptions, errors: &mut Vec<String>) {
@@ -294,7 +322,11 @@ fn mkdirs(dir: &Path, opts: &CheckOptions, errors: &mut Vec<String>) {
         return;
     }
     // LinkScope creates directories 0755 (MRTG used 0777 and relied on umask).
-    if let Err(e) = fs::DirBuilder::new().recursive(true).mode(0o755).create(dir) {
+    if let Err(e) = fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o755)
+        .create(dir)
+    {
         errors.push(format!("cannot create directory {}: {e}", dir.display()));
     }
 }
@@ -308,7 +340,10 @@ fn mkdirs_beneath(base: &Path, rel: &str, errors: &mut Vec<String>) {
         p.push(c);
         match fs::symlink_metadata(&p) {
             Ok(m) if m.file_type().is_symlink() => {
-                errors.push(format!("{} is a symlink; refusing to create log directories through it", p.display()));
+                errors.push(format!(
+                    "{} is a symlink; refusing to create log directories through it",
+                    p.display()
+                ));
                 return;
             }
             Ok(m) if m.is_dir() => {}
@@ -319,10 +354,13 @@ fn mkdirs_beneath(base: &Path, rel: &str, errors: &mut Vec<String>) {
             // mkdir does not follow a symlink in its last component: one made in between fails.
             Err(_) => {
                 if let Err(e) = fs::DirBuilder::new().mode(0o755).create(&p)
-                    && !(e.kind() == std::io::ErrorKind::AlreadyExists && p.is_dir() && !p.is_symlink()) {
-                        errors.push(format!("cannot create directory {}: {e}", p.display()));
-                        return;
-                    }
+                    && !(e.kind() == std::io::ErrorKind::AlreadyExists
+                        && p.is_dir()
+                        && !p.is_symlink())
+                {
+                    errors.push(format!("cannot create directory {}: {e}", p.display()));
+                    return;
+                }
             }
         }
     }
@@ -334,8 +372,16 @@ fn yes(v: Option<&String>) -> bool {
 
 /// Reject target names that could escape the log directory.
 fn check_name(name: &str) -> Result<(), String> {
-    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\0') || name.contains('\\') {
-        return Err(format!("target name '{name}' may not contain '/', '\\' or be '.' / '..'"));
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\0')
+        || name.contains('\\')
+    {
+        return Err(format!(
+            "target name '{name}' may not contain '/', '\\' or be '.' / '..'"
+        ));
     }
     Ok(())
 }
@@ -372,13 +418,18 @@ pub fn create_dirs(cfg: &Config) -> Result<(), ConfigError> {
             mkdirs_beneath(&cfg.global.log_dir, &t.directory, &mut errors);
         }
     }
-    if errors.is_empty() { Ok(()) } else { Err(ConfigError::Invalid(errors)) }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ConfigError::Invalid(errors))
+    }
 }
 
 /// Characters that only make sense to a shell.
 pub fn needs_shell(cmd: &str) -> bool {
-    cmd.contains(['|', '&', ';', '<', '>', '$', '`', '(', ')', '*', '?', '[', ']', '~', '{', '}'])
-        || cmd.contains('\n')
+    cmd.contains([
+        '|', '&', ';', '<', '>', '$', '`', '(', ')', '*', '?', '[', ']', '~', '{', '}',
+    ]) || cmd.contains('\n')
 }
 
 /// Run MRTG's `cfgcheck` on `raw`.
@@ -396,8 +447,11 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         log_dir = Some(w.clone());
         html_dir = Some(w.clone());
         image_dir = Some(w);
-    } else if !(g.contains_key("logdir") || g.contains_key("htmldir") || g.contains_key("imagedir")) {
-        return Err(ConfigError::Invalid(vec!["\"WorkDir\" not specified in mrtg config file".into()]));
+    } else if !(g.contains_key("logdir") || g.contains_key("htmldir") || g.contains_key("imagedir"))
+    {
+        return Err(ConfigError::Invalid(vec![
+            "\"WorkDir\" not specified in mrtg config file".into(),
+        ]));
     } else {
         for (k, slot, label) in [
             ("logdir", &mut log_dir, "LogDir"),
@@ -417,16 +471,27 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
     let log_dir = log_dir.unwrap_or_default();
 
     if g.contains_key("threshmailserver") && !g.contains_key("threshmailsender") {
-        errors.push("If \"ThreshMailServer\" is defined, then \"ThreshMailSender\" must be defined too.".into());
+        errors.push(
+            "If \"ThreshMailServer\" is defined, then \"ThreshMailSender\" must be defined too."
+                .into(),
+        );
     }
     if g.contains_key("threshmailsender") && !g.contains_key("threshmailserver") {
-        errors.push("If \"ThreshMailSender\" is defined, then \"ThreshMailServer\" must be defined too.".into());
+        errors.push(
+            "If \"ThreshMailSender\" is defined, then \"ThreshMailServer\" must be defined too."
+                .into(),
+        );
     }
     // LinkScope's alert keywords come in pairs (a webhook is always signed).
-    for (a, b) in [("AlertWebhook", "AlertWebhookSecret"), ("AlertMailUser", "AlertMailPassword")] {
+    for (a, b) in [
+        ("AlertWebhook", "AlertWebhookSecret"),
+        ("AlertMailUser", "AlertMailPassword"),
+    ] {
         for (x, y) in [(a, b), (b, a)] {
             if g.contains_key(&x.to_ascii_lowercase()) && !g.contains_key(&y.to_ascii_lowercase()) {
-                errors.push(format!("If \"{x}\" is defined, then \"{y}\" must be defined too."));
+                errors.push(format!(
+                    "If \"{x}\" is defined, then \"{y}\" must be defined too."
+                ));
             }
         }
     }
@@ -451,14 +516,20 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         errors.push("LogFormat: rrdtool is not supported by LinkScope; it reads and writes MRTG's native .log files".into());
     }
     let snmp_options = match g.get("snmpoptions") {
-        Some(s) => Some(perlhash::parse(s).map_err(|e| ConfigError::Invalid(vec![format!("SnmpOptions: {e}")]))?),
+        Some(s) => Some(
+            perlhash::parse(s)
+                .map_err(|e| ConfigError::Invalid(vec![format!("SnmpOptions: {e}")]))?,
+        ),
         None => None,
     };
 
     // ---- interval
     let interval_secs = {
         let r = Regex::new(r"([0-9]+)(?::([0-9]+))?").unwrap();
-        match g.get("interval").and_then(|v| r.captures(v).map(|c| (c[1].to_string(), c.get(2).map(|m| m.as_str().to_string())))) {
+        match g.get("interval").and_then(|v| {
+            r.captures(v)
+                .map(|c| (c[1].to_string(), c.get(2).map(|m| m.as_str().to_string())))
+        }) {
             Some((m, s)) => {
                 let mut minutes = perl_num(&m);
                 if let Some(s) = s {
@@ -503,8 +574,14 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         interval_secs,
         enable_snmpv3: yes(g.get("enablesnmpv3")),
         enable_ipv6,
-        no_mib2: g.contains_key("nomib2") && !g.get("nomib2").is_some_and(|v| v.eq_ignore_ascii_case("no")),
-        single_request: g.contains_key("singlerequest") && !g.get("singlerequest").is_some_and(|v| v.eq_ignore_ascii_case("no")),
+        no_mib2: g.contains_key("nomib2")
+            && !g
+                .get("nomib2")
+                .is_some_and(|v| v.eq_ignore_ascii_case("no")),
+        single_request: g.contains_key("singlerequest")
+            && !g
+                .get("singlerequest")
+                .is_some_and(|v| v.eq_ignore_ascii_case("no")),
         run_as_daemon: yes(g.get("runasdaemon")),
         no_detach: yes(g.get("nodetach")),
         max_age: g.get("maxage").map(|m| perl_int(m) as u64),
@@ -512,7 +589,12 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         path_add: g.get("pathadd").map(|p| ensure_sl(p)),
         load_mibs: g
             .get("loadmibs")
-            .map(|m| m.split([',', ' ', '\t', '\n']).filter(|s| !s.is_empty()).map(String::from).collect())
+            .map(|m| {
+                m.split([',', ' ', '\t', '\n'])
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
             .unwrap_or_default(),
         thresh_dir: g.get("threshdir").map(PathBuf::from),
         thresh_hyst,
@@ -526,7 +608,10 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         write_expires: yes(g.get("writeexpires")),
         icon_dir: g.get("icondir").cloned(),
         web_listen: g.get("weblisten").cloned(),
-        web_hosts: g.get("webhosts").and_then(|v| crate::rules::web_hosts(v)).unwrap_or_default(),
+        web_hosts: g
+            .get("webhosts")
+            .and_then(|v| crate::rules::web_hosts(v))
+            .unwrap_or_default(),
         exec_shell,
     };
 
@@ -547,7 +632,10 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             err(e);
             continue;
         }
-        if get("threshmailaddress").is_some() && global.thresh_mail_server.is_none() && !thresh_mail_error {
+        if get("threshmailaddress").is_some()
+            && global.thresh_mail_server.is_none()
+            && !thresh_mail_error
+        {
             err("ThreshMailAddress specified without \"ThreshMailServer:\"".into());
             thresh_mail_error = true;
         }
@@ -605,12 +693,18 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         let maxv = max_bytes1.max(max_bytes2);
         let abs_max = get("absmax").map(|v| perl_num(&v) as u64).unwrap_or(maxv);
         if abs_max < maxv {
-            err(format!("AbsMax: {abs_max} is smaller than MaxBytes: {maxv}"));
+            err(format!(
+                "AbsMax: {abs_max} is smaller than MaxBytes: {maxv}"
+            ));
         }
 
         let mut options = Options::default();
         if let Some(o) = get("options") {
-            for one in o.to_lowercase().split([',', ' ', '\t', '\n']).filter(|s| !s.is_empty()) {
+            for one in o
+                .to_lowercase()
+                .split([',', ' ', '\t', '\n'])
+                .filter(|s| !s.is_empty())
+            {
                 if KNOWN_OPTIONS.contains(&one) {
                     options.set(one);
                 } else {
@@ -623,7 +717,8 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         }
 
         // ---- the Target expression
-        let ipv4only = !enable_ipv6 || get("ipv4only").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
+        let ipv4only =
+            !enable_ipv6 || get("ipv4only").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
         let nohc = get("nohc").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
         let target_text = get("target");
         let (rewritten, expr, unique_source) = match &target_text {
@@ -650,7 +745,11 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         let mut colours: Vec<(String, String)> = Vec::new();
         match get("colours") {
             Some(c) => {
-                let (re, n) = if options.dorelpercent { (&colour5, 5) } else { (&colour4, 4) };
+                let (re, n) = if options.dorelpercent {
+                    (&colour5, 5)
+                } else {
+                    (&colour4, 4)
+                };
                 match re.captures(&c) {
                     Some(m) => {
                         for i in 0..n {
@@ -659,7 +758,11 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
                     }
                     None => err(format!(
                         "\"colours[{name}]\" use the format: Name#hexcolour, Name#Hexcolour,...{}",
-                        if options.dorelpercent { " (dorelpercent requires 5 colours)" } else { "" }
+                        if options.dorelpercent {
+                            " (dorelpercent requires 5 colours)"
+                        } else {
+                            ""
+                        }
                     )),
                 }
             }
@@ -679,18 +782,26 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         let background = match hexcol.captures(&background_raw) {
             Some(m) => m[1].to_string(),
             None => {
-                err(format!("\"background[{name}]: {background_raw}\" use the format: #rrggbb"));
+                err(format!(
+                    "\"background[{name}]: {background_raw}\" use the format: #rrggbb"
+                ));
                 "#ffffff".into()
             }
         };
         let text_raw = get("textcolor").unwrap_or_else(|| {
             let h = |i: usize| u32::from_str_radix(&background[i..i + 2], 16).unwrap_or(255);
-            if h(1) + h(3) + h(5) < 384 { "#ffffff".into() } else { "#000000".into() }
+            if h(1) + h(3) + h(5) < 384 {
+                "#ffffff".into()
+            } else {
+                "#000000".into()
+            }
         });
         let text_color = match hexcol.captures(&text_raw) {
             Some(m) => m[1].to_string(),
             None => {
-                err(format!("\"textcolor[{name}]: {text_raw}\" use the format: #rrggbb"));
+                err(format!(
+                    "\"textcolor[{name}]: {text_raw}\" use the format: #rrggbb"
+                ));
                 "#000000".into()
             }
         };
@@ -698,10 +809,22 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         let (mut timestr_pos, mut timestr_fmt) = (get("timestrpos"), get("timestrfmt"));
         if options.pngdate {
             timestr_pos = Some("RU".into());
-            timestr_fmt = Some(if get("timezone").is_some() { "%Y-%m-%d %H:%M %Z" } else { "%Y-%m-%d %H:%M" }.into());
+            timestr_fmt = Some(
+                if get("timezone").is_some() {
+                    "%Y-%m-%d %H:%M %Z"
+                } else {
+                    "%Y-%m-%d %H:%M"
+                }
+                .into(),
+            );
         }
         let set_env = get("setenv")
-            .map(|s| setenv_re.captures_iter(&s).map(|c| (c[1].trim().to_string(), c[2].to_string())).collect())
+            .map(|s| {
+                setenv_re
+                    .captures_iter(&s)
+                    .map(|c| (c[1].trim().to_string(), c[2].to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let thresholds = Thresholds {
@@ -717,8 +840,18 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             mail_address: get("threshmailaddress"),
             for_polls: get("threshfor").map(|v| perl_int(&v).clamp(1, u32::MAX as i64) as u32),
         };
-        if ["hwthreshmini", "hwthreshmino", "hwthreshmaxi", "hwthreshmaxo"].iter().any(|k| get(k).is_some()) {
-            warnings.push(format!("[{name}] HW thresholds need RRDtool's Holt-Winters data and are ignored"));
+        if [
+            "hwthreshmini",
+            "hwthreshmino",
+            "hwthreshmaxi",
+            "hwthreshmaxo",
+        ]
+        .iter()
+        .any(|k| get(k).is_some())
+        {
+            warnings.push(format!(
+                "[{name}] HW thresholds need RRDtool's Holt-Winters data and are ignored"
+            ));
         }
 
         let f = |k: &str, d: f64| get(k).map(|v| perl_num(&v)).unwrap_or(d);
@@ -743,11 +876,24 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             yticsfactor: f("yticsfactor", 1.0),
             factor: f("factor", 1.0),
             kilo: get("kilo").map(|v| perl_num(&v) as u64).unwrap_or(1000),
-            kmg: get("kmg").map(|k| k.chars().filter(|c| !c.is_whitespace()).collect::<String>().split(',').map(String::from).collect()),
+            kmg: get("kmg").map(|k| {
+                k.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>()
+                    .split(',')
+                    .map(String::from)
+                    .collect()
+            }),
             colours,
             background,
             text_color,
-            legend: [get("legend1"), get("legend2"), get("legend3"), get("legend4"), get("legend5")],
+            legend: [
+                get("legend1"),
+                get("legend2"),
+                get("legend3"),
+                get("legend4"),
+                get("legend5"),
+            ],
             legend_i: get("legendi"),
             legend_o: get("legendo"),
             y_legend: get("ylegend"),
@@ -756,7 +902,8 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             unscaled: get("unscaled").unwrap_or_default(),
             with_peak: get("withpeak").unwrap_or_default(),
             suppress: get("suppress").unwrap_or_default(),
-            week_format: get("weekformat").and_then(|w| w.chars().find(|c| matches!(c, 'U' | 'V' | 'W'))),
+            week_format: get("weekformat")
+                .and_then(|w| w.chars().find(|c| matches!(c, 'U' | 'V' | 'W'))),
             timezone: get("timezone"),
             set_env,
             extension: get("extension").unwrap_or_else(|| "html".into()),
@@ -784,7 +931,9 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
                         "data source {i} uses conversion subroutine '|{c}', which needs Perl (ConversionCode) and is not supported by LinkScope"
                     ));
                 }
-                if s.conn.version == crate::SnmpVersion::V3 && !s.snmp_options.contains_key("username") {
+                if s.conn.version == crate::SnmpVersion::V3
+                    && !s.snmp_options.contains_key("username")
+                {
                     errors.push(format!(
                         "data source {i} ({}) uses SNMPv3 but its SnmpOptions has no username",
                         s.host
@@ -834,10 +983,22 @@ mod tests {
 
     #[test]
     fn a_threshold_program_is_run_as_the_file_that_was_checked() {
-        assert_eq!(program_path("/usr/local/bin/notify".into()), "/usr/local/bin/notify");
+        assert_eq!(
+            program_path("/usr/local/bin/notify".into()),
+            "/usr/local/bin/notify"
+        );
         let rel = program_path("bin/notify".into());
-        assert!(rel.starts_with('/') && rel.ends_with("/bin/notify"), "{rel}");
-        assert_eq!(rel, std::env::current_dir().unwrap().join("bin/notify").to_string_lossy());
+        assert!(
+            rel.starts_with('/') && rel.ends_with("/bin/notify"),
+            "{rel}"
+        );
+        assert_eq!(
+            rel,
+            std::env::current_dir()
+                .unwrap()
+                .join("bin/notify")
+                .to_string_lossy()
+        );
         // A bare name is the file in the working directory, as checked, not one found on PATH.
         assert!(program_path("notify".into()).ends_with("/notify"));
     }
@@ -851,11 +1012,17 @@ mod tests {
         std::os::unix::fs::symlink(&elsewhere, logs.join("core")).unwrap();
         let mut errors = Vec::new();
         mkdirs_beneath(&logs, "core/edge", &mut errors);
-        assert!(errors.len() == 1 && errors[0].contains("symlink"), "{errors:?}");
+        assert!(
+            errors.len() == 1 && errors[0].contains("symlink"),
+            "{errors:?}"
+        );
         assert!(!elsewhere.join("edge").exists());
         errors.clear();
         mkdirs_beneath(&logs, "site/edge", &mut errors);
-        assert!(errors.is_empty() && logs.join("site/edge").is_dir(), "{errors:?}");
+        assert!(
+            errors.is_empty() && logs.join("site/edge").is_dir(),
+            "{errors:?}"
+        );
         mkdirs_beneath(&logs, "site/edge", &mut errors);
         assert!(errors.is_empty(), "{errors:?}");
     }

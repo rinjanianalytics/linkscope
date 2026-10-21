@@ -19,7 +19,7 @@ pub mod trust;
 
 use std::path::{Path, PathBuf};
 
-pub use check::{create_dirs, CheckOptions, Config, Global, Options, Target, Thresholds, check};
+pub use check::{CheckOptions, Config, Global, Options, Target, Thresholds, check, create_dirs};
 pub use expr::{Dir, EvalError, Expr};
 pub use perlhash::SnmpOptions;
 pub use raw::{RawConfig, ReadOptions, read_config};
@@ -36,7 +36,11 @@ pub enum ConfigError {
         source: std::io::Error,
     },
     #[error("{file}:{line}: {message}")]
-    At { file: PathBuf, line: usize, message: String },
+    At {
+        file: PathBuf,
+        line: usize,
+        message: String,
+    },
     #[error("refusing to use {path}: {reason} (use --allow-insecure-config to override)")]
     Untrusted { path: PathBuf, reason: String },
     #[error("configuration errors:\n  {}", .0.join("\n  "))]
@@ -45,7 +49,11 @@ pub enum ConfigError {
 
 impl ConfigError {
     pub(crate) fn at(file: &Path, line: usize, message: impl Into<String>) -> Self {
-        ConfigError::At { file: file.to_path_buf(), line, message: message.into() }
+        ConfigError::At {
+            file: file.to_path_buf(),
+            line,
+            message: message.into(),
+        }
     }
 }
 

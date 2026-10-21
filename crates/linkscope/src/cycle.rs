@@ -102,7 +102,12 @@ fn check_no_symlinks(base: &Path, rel: &str) -> Result<(), String> {
     for c in Path::new(rel).components() {
         p.push(c);
         match std::fs::symlink_metadata(&p) {
-            Ok(m) if m.file_type().is_symlink() => return Err(format!("{} is a symlink; refusing to write logs through it", p.display())),
+            Ok(m) if m.file_type().is_symlink() => {
+                return Err(format!(
+                    "{} is a symlink; refusing to write logs through it",
+                    p.display()
+                ));
+            }
             Ok(m) if !m.is_dir() => return Err(format!("{} is not a directory", p.display())),
             Ok(_) => {}
             Err(e) => return Err(format!("{}: {e}", p.display())),
@@ -124,14 +129,20 @@ struct LogDir {
 
 fn open_log_dir(base: &Path, rel: &str) -> Result<LogDir, String> {
     if rel.is_empty() {
-        return Ok(LogDir { _held: None, path: base.to_path_buf() });
+        return Ok(LogDir {
+            _held: None,
+            path: base.to_path_buf(),
+        });
     }
     #[cfg(target_os = "linux")]
     if let Some(d) = open_beneath(base, rel)? {
         return Ok(d);
     }
     check_no_symlinks(base, rel)?;
-    Ok(LogDir { _held: None, path: base.join(rel) })
+    Ok(LogDir {
+        _held: None,
+        path: base.join(rel),
+    })
 }
 
 /// `Ok(None)` when the directory cannot be held this way (no `/proc`, LogDir missing).
@@ -139,12 +150,19 @@ fn open_log_dir(base: &Path, rel: &str) -> Result<LogDir, String> {
 fn open_beneath(base: &Path, rel: &str) -> Result<Option<LogDir>, String> {
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::OpenOptionsExt;
-    let open = |p: &Path, flags: i32| std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | flags).open(p);
+    let open = |p: &Path, flags: i32| {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | flags)
+            .open(p)
+    };
     if !Path::new("/proc/self/fd").is_dir() {
         return Ok(None);
     }
     // LogDir itself is trusted (it may be a symlink the administrator made).
-    let Ok(mut dir) = open(base, 0) else { return Ok(None) };
+    let Ok(mut dir) = open(base, 0) else {
+        return Ok(None);
+    };
     let mut shown = base.to_path_buf();
     for c in Path::new(rel).components() {
         shown.push(c);
@@ -152,20 +170,32 @@ fn open_beneath(base: &Path, rel: &str) -> Result<Option<LogDir>, String> {
         dir = match open(&next, libc::O_NOFOLLOW) {
             Ok(d) => d,
             Err(e) if matches!(e.raw_os_error(), Some(libc::ELOOP) | Some(libc::ENOTDIR)) => {
-                return Err(format!("{} is a symlink or not a directory; refusing to write logs through it", shown.display()));
+                return Err(format!(
+                    "{} is a symlink or not a directory; refusing to write logs through it",
+                    shown.display()
+                ));
             }
             Err(e) => return Err(format!("{}: {e}", shown.display())),
         };
     }
     let path = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()));
-    Ok(Some(LogDir { _held: Some(dir), path }))
+    Ok(Some(LogDir {
+        _held: Some(dir),
+        path,
+    }))
 }
 
 /// The program name of an external command, for messages (the full
 /// command line may contain credentials).
 pub fn program_name(cmd: &str) -> String {
-    let first = shell_words::split(cmd).ok().and_then(|v| v.into_iter().next()).unwrap_or_default();
-    Path::new(&first).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "command".into())
+    let first = shell_words::split(cmd)
+        .ok()
+        .and_then(|v| v.into_iter().next())
+        .unwrap_or_default();
+    Path::new(&first)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "command".into())
 }
 
 struct Outcome {
@@ -180,7 +210,13 @@ struct Outcome {
 }
 
 impl Engine {
-    pub fn new(cfg: Arc<Config>, oids: Arc<OidResolver>, state: SharedState, cache_path: PathBuf, opts: EngineOptions) -> Engine {
+    pub fn new(
+        cfg: Arc<Config>,
+        oids: Arc<OidResolver>,
+        state: SharedState,
+        cache_path: PathBuf,
+        opts: EngineOptions,
+    ) -> Engine {
         let cache = Arc::new(Mutex::new(ConfCache::load(&cache_path)));
         let budget = if opts.agent_budget.is_zero() {
             Duration::from_secs((cfg.global.interval_secs * 4 / 5).max(30))
@@ -210,7 +246,18 @@ impl Engine {
                 }
             }
         }
-        Engine { cfg, poller, state, cache_path, opts, actions: tokio::task::JoinSet::new(), waiting: Default::default(), alerts, alerts_path, removed }
+        Engine {
+            cfg,
+            poller,
+            state,
+            cache_path,
+            opts,
+            actions: tokio::task::JoinSet::new(),
+            waiting: Default::default(),
+            alerts,
+            alerts_path,
+            removed,
+        }
     }
 
     /// Wait for threshold actions still running (call before exiting).
@@ -224,7 +271,8 @@ impl Engine {
     pub async fn finish_or(&mut self, stop: impl std::future::Future<Output = ()>) -> usize {
         while let Some(batch) = self.waiting.pop_front() {
             let cfg = self.cfg.clone();
-            self.actions.spawn(async move { thresh::execute(&cfg, batch).await });
+            self.actions
+                .spawn(async move { thresh::execute(&cfg, batch).await });
         }
         let actions = &mut self.actions;
         let stopped = tokio::select! {
@@ -258,7 +306,9 @@ impl Engine {
         let poll_ms = t0.elapsed().as_millis();
         let cfg = self.cfg.clone();
         let threads = if self.opts.threads == 0 {
-            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
         } else {
             self.opts.threads
         };
@@ -328,12 +378,17 @@ impl Engine {
                         ev.entry.direction,
                         ev.entry.bound,
                         ev.entry.threshold,
-                        if ev.change == alerts::Change::Fired { "firing" } else { "resolved" }
+                        if ev.change == alerts::Change::Fired {
+                            "firing"
+                        } else {
+                            "resolved"
+                        }
                     );
                     if t.thresholds.for_polls.is_some()
-                        && let Some(e) = &ev.eval {
-                            actions.extend(thresh::transition(&cfg, t, e));
-                        }
+                        && let Some(e) = &ev.eval
+                    {
+                        actions.extend(thresh::transition(&cfg, t, e));
+                    }
                     actions.extend(alerts::webhook(&cfg, &view, &ev));
                 }
             }
@@ -345,13 +400,22 @@ impl Engine {
             st.targets.extend(lives);
         }
         if write_failures > 0 {
-            tracing::error!("{write_failures} of {n} logs could not be read or written this cycle; check permissions of {}", cfg.global.log_dir.display());
+            tracing::error!(
+                "{write_failures} of {n} logs could not be read or written this cycle; check permissions of {}",
+                cfg.global.log_dir.display()
+            );
         }
-        tracing::debug!("cycle timing: polling {poll_ms} ms, log updates and sync {} ms", t0.elapsed().as_millis() - poll_ms);
+        tracing::debug!(
+            "cycle timing: polling {poll_ms} ms, log updates and sync {} ms",
+            t0.elapsed().as_millis() - poll_ms
+        );
 
         // No configured secret leaves in a mail or a program's arguments (the webhook body is
         // redacted when it is made).
-        let actions: Vec<thresh::Action> = actions.into_iter().map(|a| thresh::redacted(a, &|text: &str| view.redact_secrets(text))).collect();
+        let actions: Vec<thresh::Action> = actions
+            .into_iter()
+            .map(|a| thresh::redacted(a, &|text: &str| view.redact_secrets(text)))
+            .collect();
 
         // Threshold programs, mail and webhooks run in the background, a few batches at a time;
         // the others wait their turn rather than being dropped.
@@ -361,16 +425,25 @@ impl Engine {
         }
         while self.waiting.len() > MAX_WAITING {
             if let Some(lost) = self.waiting.pop_front() {
-                tracing::error!("threshold actions have waited {MAX_WAITING} cycles behind slow ones; {} notices were not sent", lost.len());
+                tracing::error!(
+                    "threshold actions have waited {MAX_WAITING} cycles behind slow ones; {} notices were not sent",
+                    lost.len()
+                );
             }
         }
         while self.actions.len() < RUNNING_BATCHES {
-            let Some(batch) = self.waiting.pop_front() else { break };
+            let Some(batch) = self.waiting.pop_front() else {
+                break;
+            };
             let cfg = cfg.clone();
-            self.actions.spawn(async move { thresh::execute(&cfg, batch).await });
+            self.actions
+                .spawn(async move { thresh::execute(&cfg, batch).await });
         }
         if !self.waiting.is_empty() {
-            tracing::warn!("threshold actions are waiting behind slow ones: {} batches", self.waiting.len());
+            tracing::warn!(
+                "threshold actions are waiting behind slow ones: {} batches",
+                self.waiting.len()
+            );
         }
 
         let cache = self.poller.cache.clone();
@@ -393,7 +466,14 @@ impl Engine {
             .await
             .unwrap_or_default();
         }
-        let info = CycleInfo { started, duration_ms: t0.elapsed().as_millis() as u64, targets: n, ok, failed: n - ok, write_failures };
+        let info = CycleInfo {
+            started,
+            duration_ms: t0.elapsed().as_millis() as u64,
+            targets: n,
+            ok,
+            failed: n - ok,
+            write_failures,
+        };
         let mut st = self.state.write().unwrap_or_else(|e| e.into_inner());
         st.cycles += 1;
         st.last_cycle = Some(info.clone());
@@ -430,13 +510,19 @@ impl Engine {
                 };
                 // MRTG: with no location, use the unique target's host.
                 let loc = if nloc.is_empty() {
-                    unique_loc.as_ref().and_then(|u| u.split_once('@')).map(|(_, rest)| format!("{comm}@{rest}"))
+                    unique_loc
+                        .as_ref()
+                        .and_then(|u| u.split_once('@'))
+                        .map(|(_, rest)| format!("{comm}@{rest}"))
                 } else {
                     Some(format!("{comm}@{nloc}"))
                 };
                 if let Some(loc) = loc {
                     uploc = Some(loc.clone());
-                    wanted.entry((loc, vec![noid, "sysName".into()])).or_default().push((ti, Fill::UptimeName));
+                    wanted
+                        .entry((loc, vec![noid, "sysName".into()]))
+                        .or_default()
+                        .push((ti, Fill::UptimeName));
                 }
             }
             if let Some(rn) = &t.router_name {
@@ -444,9 +530,15 @@ impl Engine {
                     Some((o, l)) => (o.to_string(), Some(l.to_string())),
                     None => (rn.clone(), None),
                 };
-                let loc = nloc.filter(|l| !l.is_empty()).or_else(|| unique_loc.clone()).or_else(|| uploc.clone());
+                let loc = nloc
+                    .filter(|l| !l.is_empty())
+                    .or_else(|| unique_loc.clone())
+                    .or_else(|| uploc.clone());
                 if let Some(loc) = loc {
-                    wanted.entry((loc, vec![noid])).or_default().push((ti, Fill::Name));
+                    wanted
+                        .entry((loc, vec![noid]))
+                        .or_default()
+                        .push((ti, Fill::Name));
                 }
             }
         }
@@ -461,12 +553,19 @@ impl Engine {
                 Some(ep) => ep,
                 None => continue,
             };
-            let numeric: Vec<String> = oids.iter().map(|o| self.poller.oids.resolve(o).unwrap_or_default()).collect();
+            let numeric: Vec<String> = oids
+                .iter()
+                .map(|o| self.poller.oids.resolve(o).unwrap_or_default())
+                .collect();
             let (pool, sem, dead) = (self.poller.pool.clone(), sem.clone(), dead.clone());
             set.spawn(async move {
                 let _p = sem.acquire_owned().await;
                 let key = format!("{}:{}", ep.host, ep.port);
-                if dead.lock().unwrap_or_else(|e| e.into_inner()).contains(&key) {
+                if dead
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .contains(&key)
+                {
                     return (who, None);
                 }
                 let vals = match pool.session(&ep).await {
@@ -476,7 +575,11 @@ impl Engine {
                 if vals.is_none() {
                     dead.lock().unwrap_or_else(|e| e.into_inner()).insert(key);
                 }
-                let vals = vals.map(|v| v.into_iter().map(|v| v.is_present().then(|| v.pretty().trim().to_string())).collect::<Vec<_>>());
+                let vals = vals.map(|v| {
+                    v.into_iter()
+                        .map(|v| v.is_present().then(|| v.pretty().trim().to_string()))
+                        .collect::<Vec<_>>()
+                });
                 (who, vals)
             });
         }
@@ -525,17 +628,19 @@ impl Engine {
 /// A value as the expression reads it. Bounded: a device or a command chooses the text, and a
 /// value written with a huge exponent would cost gigabytes to align or print (MRTG drops it too).
 fn dec(v: &Option<String>) -> Option<BigDecimal> {
-    v.as_deref().and_then(linkscope_config::expr::bounded_decimal)
+    v.as_deref()
+        .and_then(linkscope_config::expr::bounded_decimal)
 }
 
 /// MRTG's compensation for agents that report counters as negative
 /// numbers: add 2^31.
 fn fix_negative(v: String) -> String {
     if v.starts_with('-')
-        && let Some(d) = linkscope_config::expr::bounded_decimal(&v) {
-            let fixed = d + BigDecimal::from(1u64 << 31);
-            return fixed.with_scale(0).to_string();
-        }
+        && let Some(d) = linkscope_config::expr::bounded_decimal(&v)
+    {
+        let fixed = d + BigDecimal::from(1u64 << 31);
+        return fixed.with_scale(0).to_string();
+    }
     v
 }
 
@@ -548,19 +653,24 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     t.expr.sources(&mut used);
     for i in &used {
         if let Some(e) = results.get(*i).and_then(|r| r.error.as_ref())
-            && !errors.contains(e) {
-                errors.push(e.clone());
-            }
+            && !errors.contains(e)
+        {
+            errors.push(e.clone());
+        }
     }
     // Errors name the target, never the Target text (it holds credentials).
-    let eval = |get: &dyn Fn(usize) -> Option<BigDecimal>, dir: &str, errors: &mut Vec<String>| match t.expr.eval_value(get) {
-        Ok(v) => Some(fix_negative(v)),
-        Err(linkscope_config::EvalError::Undefined(_)) => None,
-        Err(e) => {
-            errors.push(format!("Target[{}][{dir}]: {e}", t.name));
-            None
-        }
-    };
+    let eval =
+        |get: &dyn Fn(usize) -> Option<BigDecimal>, dir: &str, errors: &mut Vec<String>| match t
+            .expr
+            .eval_value(get)
+        {
+            Ok(v) => Some(fix_negative(v)),
+            Err(linkscope_config::EvalError::Undefined(_)) => None,
+            Err(e) => {
+                errors.push(format!("Target[{}][{dir}]: {e}", t.name));
+                None
+            }
+        };
     let input = eval(&get_in, "_IN_", &mut errors);
     let output = eval(&get_out, "_OUT_", &mut errors);
 
@@ -593,7 +703,13 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
         }
         live.error = Some(errors.join("; "));
         live.failed = true;
-        Outcome { live, actions: Vec::new(), evals: Vec::new(), defined, write_failed: true }
+        Outcome {
+            live,
+            actions: Vec::new(),
+            evals: Vec::new(),
+            defined,
+            write_failed: true,
+        }
     };
 
     let held = match open_log_dir(&cfg.global.log_dir, &t.directory) {
@@ -608,9 +724,15 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     if let Some(max_age) = cfg.global.max_age {
         let path = dir.join(format!("{}.log", t.name));
         if let Ok(m) = std::fs::symlink_metadata(&path).and_then(|m| m.modified()) {
-            let age = std::time::SystemTime::now().duration_since(m).map(|d| d.as_secs()).unwrap_or(0);
+            let age = std::time::SystemTime::now()
+                .duration_since(m)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             if age > max_age {
-                errors.push(format!("skipping update of {}: its log is older than MaxAge ({max_age} s)", t.name));
+                errors.push(format!(
+                    "skipping update of {}: its log is older than MaxAge ({max_age} s)",
+                    t.name
+                ));
                 return fail(live, errors);
             }
         }
@@ -628,8 +750,20 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     let mut actions = Vec::new();
     let mut evals = Vec::new();
     let mut write_failed = false;
-    let raw = (input.as_deref().unwrap_or("-1"), output.as_deref().unwrap_or("-1"));
-    match update_log(&mut log, &dir, &t.name, time, raw, abs_max, mode, t.options.unknaszero) {
+    let raw = (
+        input.as_deref().unwrap_or("-1"),
+        output.as_deref().unwrap_or("-1"),
+    );
+    match update_log(
+        &mut log,
+        &dir,
+        &t.name,
+        time,
+        raw,
+        abs_max,
+        mode,
+        t.options.unknaszero,
+    ) {
         UpdateOutcome::Updated => {
             if let Some((_, i, o)) = log.latest_rate() {
                 live.cur_in = known_rate(i);
@@ -649,14 +783,18 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
                     dorelpercent: t.options.dorelpercent,
                 };
                 let s = log.summarize(time, Period::Day, &opts);
-                evals = thresh::evaluate(t, known_rate(s.cur_in as f64), known_rate(s.cur_out as f64));
+                evals =
+                    thresh::evaluate(t, known_rate(s.cur_in as f64), known_rate(s.cur_out as f64));
                 // ThreshFor[] targets act on alert changes instead (see alerts.rs).
                 if t.thresholds.for_polls.is_none() {
                     actions = thresh::check_evals(cfg, t, &evals);
                 }
             }
         }
-        UpdateOutcome::TimeWarp => errors.push(format!("{}: log file time is newer than now; log unchanged (is the clock right?)", t.name)),
+        UpdateOutcome::TimeWarp => errors.push(format!(
+            "{}: log file time is newer than now; log unchanged (is the clock right?)",
+            t.name
+        )),
         UpdateOutcome::Rejected(e) => errors.push(format!("{}: value rejected: {e}", t.name)),
     }
     for e in &errors {
@@ -666,7 +804,13 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
         live.error = Some(errors.join("; "));
     }
     live.failed = write_failed;
-    Outcome { live, actions, evals, defined, write_failed }
+    Outcome {
+        live,
+        actions,
+        evals,
+        defined,
+        write_failed,
+    }
 }
 
 /// `RateLog::update`, recovering two damaged logs that otherwise refused every update and were
@@ -676,10 +820,21 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
 /// * the last update is more than [`FUTURE_LOG`] ahead of now: the log is set aside as
 ///   `<name>.future` (kept for inspection) and a new one started.
 #[allow(clippy::too_many_arguments)]
-fn update_log(log: &mut RateLog, dir: &Path, name: &str, time: i64, raw: (&str, &str), abs_max: i64, mode: Mode, unknaszero: bool) -> UpdateOutcome {
+fn update_log(
+    log: &mut RateLog,
+    dir: &Path,
+    name: &str,
+    time: i64,
+    raw: (&str, &str),
+    abs_max: i64,
+    mode: Mode,
+    unknaszero: bool,
+) -> UpdateOutcome {
     let mut outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
     if outcome == UpdateOutcome::Rejected(InputError::TooLongForDiff) {
-        tracing::warn!("{name}: the log's last value is too long to compare with; starting the rate afresh");
+        tracing::warn!(
+            "{name}: the log's last value is too long to compare with; starting the rate afresh"
+        );
         log.forget_last_values();
         outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
     }
@@ -691,7 +846,9 @@ fn update_log(log: &mut RateLog, dir: &Path, name: &str, time: i64, raw: (&str, 
                 log.last_time(),
                 aside.display()
             ),
-            Err(e) => tracing::error!("{name}: the log's last update is more than a day ahead of now; a new log is started ({e})"),
+            Err(e) => tracing::error!(
+                "{name}: the log's last update is more than a day ahead of now; a new log is started ({e})"
+            ),
         }
         *log = RateLog::fresh(time);
         outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
@@ -739,14 +896,38 @@ mod tests {
         let work = dir.join("work");
         std::fs::create_dir_all(&work).unwrap();
         let path = dir.join("m.cfg");
-        std::fs::write(&path, format!("WorkDir: {}\nTarget[r1]: 2:public@192.0.2.1\nTitle[r1]: R1\nMaxBytes[r1]: 100\n", work.display())).unwrap();
-        let cfg = linkscope_config::load(&path, &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off }, &linkscope_config::CheckOptions::default()).unwrap();
-        let state: SharedState = Arc::new(std::sync::RwLock::new(linkscope_web::LiveState::default()));
-        Engine::new(Arc::new(cfg), Arc::new(OidResolver::default()), state, dir.join("m.ok"), EngineOptions::default())
+        std::fs::write(
+            &path,
+            format!(
+                "WorkDir: {}\nTarget[r1]: 2:public@192.0.2.1\nTitle[r1]: R1\nMaxBytes[r1]: 100\n",
+                work.display()
+            ),
+        )
+        .unwrap();
+        let cfg = linkscope_config::load(
+            &path,
+            &linkscope_config::ReadOptions {
+                trust: linkscope_config::TrustPolicy::Off,
+            },
+            &linkscope_config::CheckOptions::default(),
+        )
+        .unwrap();
+        let state: SharedState =
+            Arc::new(std::sync::RwLock::new(linkscope_web::LiveState::default()));
+        Engine::new(
+            Arc::new(cfg),
+            Arc::new(OidResolver::default()),
+            state,
+            dir.join("m.ok"),
+            EngineOptions::default(),
+        )
     }
 
     fn slow() -> Vec<thresh::Action> {
-        vec![thresh::Action::Run { argv: vec!["/bin/sleep".into(), "30".into()], env: vec![] }]
+        vec![thresh::Action::Run {
+            argv: vec!["/bin/sleep".into(), "30".into()],
+            env: vec![],
+        }]
     }
 
     /// A reload hands the actions in flight to the new engine; a stop cuts them short at once.
@@ -756,14 +937,22 @@ mod tests {
         let mut old = engine(d.path());
         old.waiting.push_back(slow());
         let cfg = old.cfg.clone();
-        old.actions.spawn(async move { thresh::execute(&cfg, slow()).await });
+        old.actions
+            .spawn(async move { thresh::execute(&cfg, slow()).await });
         let mut new = engine(d.path());
         new.adopt(old);
         assert_eq!((new.waiting.len(), new.actions.len()), (1, 1));
         let started = std::time::Instant::now();
         let cut = new.finish_or(async {}).await;
-        assert_eq!(cut, 2, "the waiting batch is started, then both are cut short");
-        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        assert_eq!(
+            cut, 2,
+            "the waiting batch is started, then both are cut short"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
         assert_eq!(new.actions.len(), 0);
     }
 
@@ -776,23 +965,65 @@ mod tests {
         let body = good.split_once('\n').unwrap().1;
         let long = format!("{} {} {}\n{body}", now - 300, "7".repeat(199), "8");
         let mut log = RateLog::from_bytes(Some(long.as_bytes()), None, now).unwrap();
-        assert_eq!(log.update(now, "1000", "2000", i64::MAX, Mode::Counter, false), UpdateOutcome::Rejected(InputError::TooLongForDiff));
+        assert_eq!(
+            log.update(now, "1000", "2000", i64::MAX, Mode::Counter, false),
+            UpdateOutcome::Rejected(InputError::TooLongForDiff)
+        );
         let mut log = RateLog::from_bytes(Some(long.as_bytes()), None, now).unwrap();
-        assert_eq!(update_log(&mut log, d.path(), "t", now, ("1000", "2000"), i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
+        assert_eq!(
+            update_log(
+                &mut log,
+                d.path(),
+                "t",
+                now,
+                ("1000", "2000"),
+                i64::MAX,
+                Mode::Counter,
+                false
+            ),
+            UpdateOutcome::Updated
+        );
         assert_eq!(log.last_raw(), ("1000", "2000"));
 
         // An update far in the future: the log is set aside and a new one started.
         let ahead = format!("{} 5 6\n{body}", now + 10 * 86_400);
         std::fs::write(d.path().join("t.log"), &ahead).unwrap();
         let mut log = RateLog::load(d.path(), "t", now).unwrap();
-        assert_eq!(update_log(&mut log, d.path(), "t", now, ("1000", "2000"), i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
-        assert_eq!(std::fs::read_to_string(d.path().join("t.future")).unwrap(), ahead);
+        assert_eq!(
+            update_log(
+                &mut log,
+                d.path(),
+                "t",
+                now,
+                ("1000", "2000"),
+                i64::MAX,
+                Mode::Counter,
+                false
+            ),
+            UpdateOutcome::Updated
+        );
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("t.future")).unwrap(),
+            ahead
+        );
         assert_eq!(log.last_time(), now);
         // A clock a little behind the log is still MRTG's time warp: nothing changes.
         let behind = format!("{} 5 6\n{body}", now + 600);
         std::fs::write(d.path().join("u.log"), &behind).unwrap();
         let mut log = RateLog::load(d.path(), "u", now).unwrap();
-        assert_eq!(update_log(&mut log, d.path(), "u", now, ("1", "2"), i64::MAX, Mode::Counter, false), UpdateOutcome::TimeWarp);
+        assert_eq!(
+            update_log(
+                &mut log,
+                d.path(),
+                "u",
+                now,
+                ("1", "2"),
+                i64::MAX,
+                Mode::Counter,
+                false
+            ),
+            UpdateOutcome::TimeWarp
+        );
         assert!(!d.path().join("u.future").exists());
     }
 
@@ -805,7 +1036,10 @@ mod tests {
 
     #[test]
     fn program_name_hides_arguments() {
-        assert_eq!(program_name("/usr/bin/snmpget -c s3cret host oid"), "snmpget");
+        assert_eq!(
+            program_name("/usr/bin/snmpget -c s3cret host oid"),
+            "snmpget"
+        );
         assert_eq!(program_name("'/opt/my tools/x.sh' --pw=x"), "x.sh");
     }
 

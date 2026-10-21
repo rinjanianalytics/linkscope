@@ -37,8 +37,15 @@ fn content_type(path: &str) -> &'static str {
 
 async fn static_file(req: Request<Body>) -> Response<Body> {
     // The UI's files are read, nothing else: an unknown API path is an error, not the UI's page.
-    if !matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
-        return Response::builder().status(StatusCode::METHOD_NOT_ALLOWED).header(header::ALLOW, "GET, HEAD").body(Body::empty()).unwrap_or_default();
+    if !matches!(
+        *req.method(),
+        axum::http::Method::GET | axum::http::Method::HEAD
+    ) {
+        return Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .header(header::ALLOW, "GET, HEAD")
+            .body(Body::empty())
+            .unwrap_or_default();
     }
     let path = req.uri().path().trim_start_matches('/');
     if path == "api" || path.starts_with("api/") {
@@ -52,15 +59,27 @@ async fn static_file(req: Request<Body>) -> Response<Body> {
         Some(f) if !path.is_empty() => (f, path),
         // A stale hashed asset must fail clearly, not return the page.
         None if path.starts_with("assets/") => {
-            return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap();
+            return Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap();
         }
         // Single-page app: unknown paths get index.html.
         _ => match UI.get_file("index.html") {
             Some(f) => (f, "index.html"),
-            None => return Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap(),
+            None => {
+                return Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Body::empty())
+                    .unwrap();
+            }
         },
     };
-    let cache = if path.starts_with("assets/") { "public, max-age=31536000, immutable" } else { "no-cache" };
+    let cache = if path.starts_with("assets/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
     Response::builder()
         .header(header::CONTENT_TYPE, content_type(path))
         .header(header::CACHE_CONTROL, cache)
@@ -85,15 +104,31 @@ pub fn host_allowed(host: &str, allowed: &[String]) -> bool {
     let name = host_name(host.trim()).trim_end_matches('.');
     name.parse::<std::net::IpAddr>().is_ok()
         || name.eq_ignore_ascii_case("localhost")
-        || allowed.iter().any(|a| a == "*" || a.eq_ignore_ascii_case(name))
+        || allowed
+            .iter()
+            .any(|a| a == "*" || a.eq_ignore_ascii_case(name))
 }
 
 /// Only requests for a known host are answered. The UI has no login: without this, a web page
 /// whose name is made to resolve to the UI's address (DNS rebinding) reads it from a browser on
 /// the same network. A request without a `Host` header is not from a browser and is answered.
-async fn known_host(axum::extract::State(state): axum::extract::State<SharedState>, req: Request<Body>, next: Next) -> Response<Body> {
-    if let Some(host) = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()) {
-        let allowed = state.read().unwrap_or_else(|e| e.into_inner()).config.as_ref().map(|c| c.global.web_hosts.clone()).unwrap_or_default();
+async fn known_host(
+    axum::extract::State(state): axum::extract::State<SharedState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response<Body> {
+    if let Some(host) = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        let allowed = state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .config
+            .as_ref()
+            .map(|c| c.global.web_hosts.clone())
+            .unwrap_or_default();
         if !host_allowed(host, &allowed) {
             return Response::builder()
                 .status(StatusCode::MISDIRECTED_REQUEST)
@@ -114,7 +149,11 @@ async fn harden(req: Request<Body>, next: Next) -> Response<Body> {
     let set = |h: &mut axum::http::HeaderMap, k: &'static str, v: &'static str| {
         h.insert(k, HeaderValue::from_static(v));
     };
-    set(h, "content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    set(
+        h,
+        "content-security-policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    );
     set(h, "x-content-type-options", "nosniff");
     set(h, "referrer-policy", "no-referrer");
     set(h, "x-frame-options", "DENY");
@@ -159,17 +198,24 @@ pub const HEADER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1
 pub const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Serve on an already bound listener (bound before privileges are dropped).
-pub async fn serve_listener(listener: tokio::net::TcpListener, state: SharedState) -> std::io::Result<()> {
+pub async fn serve_listener(
+    listener: tokio::net::TcpListener,
+    state: SharedState,
+) -> std::io::Result<()> {
     let addr = listener.local_addr()?;
     tracing::info!("web UI on http://{addr}/");
     if !addr.ip().is_loopback() {
-        tracing::warn!("web UI is listening on {addr}, which is reachable from the network; it has no login, so put it behind a reverse proxy with authentication if needed");
+        tracing::warn!(
+            "web UI is listening on {addr}, which is reachable from the network; it has no login, so put it behind a reverse proxy with authentication if needed"
+        );
     }
     let app = router(state);
     let permits = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
     loop {
         // A permit first, then accept: past the cap, clients wait in the kernel's queue.
-        let Ok(permit) = permits.clone().acquire_owned().await else { return Ok(()) };
+        let Ok(permit) = permits.clone().acquire_owned().await else {
+            return Ok(());
+        };
         let socket = match listener.accept().await {
             Ok((socket, _)) => socket,
             Err(e) => {
@@ -180,8 +226,12 @@ pub async fn serve_listener(listener: tokio::net::TcpListener, state: SharedStat
         };
         let service = hyper_util::service::TowerToHyperService::new(app.clone());
         tokio::spawn(async move {
-            let mut builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
-            builder.http1().timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
+            let mut builder =
+                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+            builder
+                .http1()
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(HEADER_TIMEOUT);
             let conn = builder.serve_connection(hyper_util::rt::TokioIo::new(socket), service);
             let _ = tokio::time::timeout(CONNECTION_TIMEOUT, conn).await;
             drop(permit);

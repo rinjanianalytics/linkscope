@@ -13,14 +13,18 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use linkscope_config::{CheckOptions, Config, ReadOptions, TrustPolicy};
 use linkscope::cycle::{Engine, EngineOptions, default_cache_path};
 use linkscope::daemon;
 use linkscope::oids::OidResolver;
+use linkscope_config::{CheckOptions, Config, ReadOptions, TrustPolicy};
 use linkscope_web::{LiveState, SharedState};
 
 #[derive(Parser, Debug)]
-#[command(name = "linkscope", version, about = "LinkScope: link utilization monitoring, compatible with MRTG")]
+#[command(
+    name = "linkscope",
+    version,
+    about = "LinkScope: link utilization monitoring, compatible with MRTG"
+)]
 struct Args {
     /// Configuration file (MRTG syntax).
     #[arg(default_value = "/etc/mrtg/mrtg.cfg")]
@@ -74,8 +78,11 @@ struct Args {
 
 fn init_logging(target: Option<&str>, debug: bool) -> Result<()> {
     use tracing_subscriber::EnvFilter;
-    let filter = EnvFilter::try_from_env("LINKSCOPE_LOG").unwrap_or_else(|_| EnvFilter::new(if debug { "debug" } else { "info" }));
-    let builder = tracing_subscriber::fmt().with_env_filter(filter).with_target(false);
+    let filter = EnvFilter::try_from_env("LINKSCOPE_LOG")
+        .unwrap_or_else(|_| EnvFilter::new(if debug { "debug" } else { "info" }));
+    let builder = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false);
     match target {
         Some(f) if f != "eventlog" => {
             use std::os::unix::fs::OpenOptionsExt;
@@ -86,7 +93,10 @@ fn init_logging(target: Option<&str>, debug: bool) -> Result<()> {
                 .custom_flags(libc::O_NOFOLLOW)
                 .open(f)
                 .with_context(|| format!("opening log file {f}"))?;
-            builder.with_ansi(false).with_writer(std::sync::Mutex::new(file)).init();
+            builder
+                .with_ansi(false)
+                .with_writer(std::sync::Mutex::new(file))
+                .init();
         }
         _ => builder.with_writer(std::io::stderr).init(),
     }
@@ -94,9 +104,19 @@ fn init_logging(target: Option<&str>, debug: bool) -> Result<()> {
 }
 
 fn load_config(path: &Path, insecure: bool) -> Result<Config> {
-    let read = ReadOptions { trust: if insecure { TrustPolicy::Warn } else { TrustPolicy::Enforce } };
+    let read = ReadOptions {
+        trust: if insecure {
+            TrustPolicy::Warn
+        } else {
+            TrustPolicy::Enforce
+        },
+    };
     // Directories are created later, as the account that writes the logs.
-    Ok(linkscope_config::load(path, &read, &CheckOptions { no_create: true })?)
+    Ok(linkscope_config::load(
+        path,
+        &read,
+        &CheckOptions { no_create: true },
+    )?)
 }
 
 fn absolute(p: &Path) -> PathBuf {
@@ -104,14 +124,24 @@ fn absolute(p: &Path) -> PathBuf {
 }
 
 fn mtimes(cfg: &Config) -> Vec<Option<SystemTime>> {
-    cfg.files.iter().map(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok()).collect()
+    cfg.files
+        .iter()
+        .map(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok())
+        .collect()
 }
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().collect();
-    let prog = Path::new(argv.first().map(String::as_str).unwrap_or("")).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let prog = Path::new(argv.first().map(String::as_str).unwrap_or(""))
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     if prog == "cfgmaker" || argv.get(1).map(String::as_str) == Some("cfgmaker") {
-        let rest: Vec<String> = if prog == "cfgmaker" { argv.clone() } else { argv[1..].to_vec() };
+        let rest: Vec<String> = if prog == "cfgmaker" {
+            argv.clone()
+        } else {
+            argv[1..].to_vec()
+        };
         return linkscope::cfgmaker::main(rest);
     }
     match run(Args::parse()) {
@@ -127,12 +157,18 @@ fn run(mut args: Args) -> Result<ExitCode> {
     // Absolute paths throughout, so nothing depends on the working directory.
     args.config = absolute(&args.config);
     if args.fhs {
-        args.confcache_file.get_or_insert_with(|| daemon::FHS_CONFCACHE.into());
+        args.confcache_file
+            .get_or_insert_with(|| daemon::FHS_CONFCACHE.into());
         args.pid_file.get_or_insert_with(|| daemon::FHS_PID.into());
-        args.lock_file.get_or_insert_with(|| daemon::FHS_LOCK.into());
+        args.lock_file
+            .get_or_insert_with(|| daemon::FHS_LOCK.into());
         args.logging.get_or_insert_with(|| daemon::FHS_LOG.into());
     }
-    for p in [&mut args.confcache_file, &mut args.pid_file, &mut args.lock_file] {
+    for p in [
+        &mut args.confcache_file,
+        &mut args.pid_file,
+        &mut args.lock_file,
+    ] {
         if let Some(x) = p.as_mut() {
             *x = absolute(x);
         }
@@ -148,7 +184,12 @@ fn run(mut args: Args) -> Result<ExitCode> {
         for w in &cfg.warnings {
             eprintln!("WARNING: {w}");
         }
-        println!("{}: {} targets, {} data sources: OK", args.config.display(), cfg.targets.len(), cfg.sources.len());
+        println!(
+            "{}: {} targets, {} data sources: OK",
+            args.config.display(),
+            cfg.targets.len(),
+            cfg.sources.len()
+        );
         return Ok(ExitCode::SUCCESS);
     }
 
@@ -156,7 +197,12 @@ fn run(mut args: Args) -> Result<ExitCode> {
     let ids = daemon::lookup_ids(args.user.as_deref(), args.group.as_deref())?;
     if args.fhs && nix::unistd::Uid::effective().is_root() {
         let (u, g) = ids.unwrap_or((nix::unistd::Uid::current(), nix::unistd::Gid::current()));
-        for f in [daemon::FHS_CONFCACHE, daemon::FHS_PID, daemon::FHS_LOCK, daemon::FHS_LOG] {
+        for f in [
+            daemon::FHS_CONFCACHE,
+            daemon::FHS_PID,
+            daemon::FHS_LOCK,
+            daemon::FHS_LOG,
+        ] {
             if let Some(dir) = Path::new(f).parent() {
                 daemon::ensure_owned_dir(dir, u, g)?;
             }
@@ -165,15 +211,31 @@ fn run(mut args: Args) -> Result<ExitCode> {
     let daemon_mode = args.daemon || cfg.global.run_as_daemon;
     // The lock first: it is what tells a running instance apart, so a PID file found after it is
     // taken is stale and is never read (see PidFile::create).
-    let lock_path = args.lock_file.clone().unwrap_or_else(|| PathBuf::from(format!("{}_l", args.config.display())));
+    let lock_path = args
+        .lock_file
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(format!("{}_l", args.config.display())));
     let _lock = daemon::acquire_lock(&lock_path)?;
-    let pid_path = args.pid_file.clone().unwrap_or_else(|| args.config.with_extension("pid"));
-    let mut pid = if daemon_mode { Some(daemon::PidFile::create(&pid_path, ids)?) } else { None };
-    let listen = args.listen.clone().or_else(|| cfg.global.web_listen.clone());
+    let pid_path = args
+        .pid_file
+        .clone()
+        .unwrap_or_else(|| args.config.with_extension("pid"));
+    let mut pid = if daemon_mode {
+        Some(daemon::PidFile::create(&pid_path, ids)?)
+    } else {
+        None
+    };
+    let listen = args
+        .listen
+        .clone()
+        .or_else(|| cfg.global.web_listen.clone());
     let listener = match &listen {
         Some(addr) => {
-            let a: std::net::SocketAddr = addr.parse().with_context(|| format!("bad listen address {addr}"))?;
-            let l = std::net::TcpListener::bind(a).with_context(|| format!("cannot listen on {a}"))?;
+            let a: std::net::SocketAddr = addr
+                .parse()
+                .with_context(|| format!("bad listen address {addr}"))?;
+            let l =
+                std::net::TcpListener::bind(a).with_context(|| format!("cannot listen on {a}"))?;
             l.set_nonblocking(true)?;
             Some(l)
         }
@@ -184,15 +246,26 @@ fn run(mut args: Args) -> Result<ExitCode> {
         daemon::drop_privileges(u, g)?;
     }
     init_logging(args.logging.as_deref(), args.debug.is_some())?;
-    for w in cfg.warnings.iter().cloned().chain(linkscope::thresh::cleartext_warnings(&cfg)) {
+    for w in cfg
+        .warnings
+        .iter()
+        .cloned()
+        .chain(linkscope::thresh::cleartext_warnings(&cfg))
+    {
         tracing::warn!("{w}");
     }
     linkscope_config::create_dirs(&cfg)?;
 
     // Like MRTG: detach unless NoDetach (or --foreground for supervisors).
-    if daemon_mode && !cfg.global.no_detach && !args.foreground && std::env::var_os("LINKSCOPE_FOREGROUND").is_none() {
+    if daemon_mode
+        && !cfg.global.no_detach
+        && !args.foreground
+        && std::env::var_os("LINKSCOPE_FOREGROUND").is_none()
+    {
         if args.logging.is_none() {
-            eprintln!("linkscope: detaching; messages go to /dev/null (use --logging FILE, or --foreground under systemd)");
+            eprintln!(
+                "linkscope: detaching; messages go to /dev/null (use --logging FILE, or --foreground under systemd)"
+            );
         }
         daemon::daemonize()?;
     }
@@ -200,14 +273,21 @@ fn run(mut args: Args) -> Result<ExitCode> {
         p.write_current()?;
     }
 
-    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
     rt.block_on(async_main(args, cfg, daemon_mode, listener))
 }
 
 /// How long threshold actions in flight may take once the daemon is told to stop.
 const STOP_GRACE: Duration = Duration::from_secs(10);
 
-async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option<std::net::TcpListener>) -> Result<ExitCode> {
+async fn async_main(
+    args: Args,
+    cfg: Config,
+    daemon_mode: bool,
+    listener: Option<std::net::TcpListener>,
+) -> Result<ExitCode> {
     let mut oids = OidResolver::default();
     for m in &cfg.global.load_mibs {
         match oids.load_mib(Path::new(m)) {
@@ -216,11 +296,26 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
         }
     }
     let oids = Arc::new(oids);
-    let state: SharedState = Arc::new(RwLock::new(LiveState { started: linkscope::poll::now(), ..Default::default() }));
-    let cache_path = args.confcache_file.clone().unwrap_or_else(|| default_cache_path(&args.config));
-    let opts = EngineOptions { concurrency: args.concurrency, ..Default::default() };
+    let state: SharedState = Arc::new(RwLock::new(LiveState {
+        started: linkscope::poll::now(),
+        ..Default::default()
+    }));
+    let cache_path = args
+        .confcache_file
+        .clone()
+        .unwrap_or_else(|| default_cache_path(&args.config));
+    let opts = EngineOptions {
+        concurrency: args.concurrency,
+        ..Default::default()
+    };
     let mut cfg = Arc::new(cfg);
-    let mut engine = Engine::new(cfg.clone(), oids.clone(), state.clone(), cache_path.clone(), opts.clone());
+    let mut engine = Engine::new(
+        cfg.clone(),
+        oids.clone(),
+        state.clone(),
+        cache_path.clone(),
+        opts.clone(),
+    );
 
     if let Some(l) = listener {
         let st = state.clone();
@@ -254,7 +349,13 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
         if cut > 0 {
             tracing::warn!("stopped with {cut} batches of threshold actions unfinished");
         }
-        tracing::info!("polled {} targets in {} ms ({} ok, {} failed)", info.targets, info.duration_ms, info.ok, info.failed);
+        tracing::info!(
+            "polled {} targets in {} ms ({} ok, {} failed)",
+            info.targets,
+            info.duration_ms,
+            info.ok,
+            info.failed
+        );
         return Ok(match (info.ok, info.failed) {
             (_, 0) => ExitCode::SUCCESS,
             (0, _) => ExitCode::from(92),
@@ -263,7 +364,11 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
     }
 
     let mut stamps = mtimes(&cfg);
-    tracing::info!("LinkScope daemon started: {} targets every {} s", cfg.targets.len(), cfg.global.interval_secs);
+    tracing::info!(
+        "LinkScope daemon started: {} targets every {} s",
+        cfg.targets.len(),
+        cfg.global.interval_secs
+    );
     'outer: loop {
         let start = tokio::time::Instant::now();
         // SIGTERM cancels a running cycle; logs are replaced atomically.
@@ -272,11 +377,20 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
             _ = term.recv() => break,
             _ = int.recv() => break,
         };
-        tracing::info!("cycle: {} targets in {} ms ({} failed, {} log write failures)", info.targets, info.duration_ms, info.failed, info.write_failures);
+        tracing::info!(
+            "cycle: {} targets in {} ms ({} failed, {} log write failures)",
+            info.targets,
+            info.duration_ms,
+            info.failed,
+            info.write_failures
+        );
         let interval = Duration::from_secs(cfg.global.interval_secs.max(1));
         let deadline = start + interval;
         if deadline <= tokio::time::Instant::now() {
-            tracing::warn!("polling took longer than Interval ({} s); consider raising --concurrency", interval.as_secs());
+            tracing::warn!(
+                "polling took longer than Interval ({} s); consider raising --concurrency",
+                interval.as_secs()
+            );
         }
         // Wait out the interval; a SIGHUP reloads but keeps the schedule.
         loop {
@@ -289,22 +403,42 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
             }
             if reload || mtimes(&cfg) != stamps {
                 // A reader bug must not take the running daemon down: the old configuration stays.
-                let loaded = std::panic::catch_unwind(|| load_config(&args.config, args.allow_insecure_config))
-                    .unwrap_or_else(|_| Err(anyhow::anyhow!("the configuration reader failed unexpectedly")));
+                let loaded = std::panic::catch_unwind(|| {
+                    load_config(&args.config, args.allow_insecure_config)
+                })
+                .unwrap_or_else(|_| {
+                    Err(anyhow::anyhow!(
+                        "the configuration reader failed unexpectedly"
+                    ))
+                });
                 match loaded.and_then(|c| {
                     linkscope_config::create_dirs(&c)?;
                     Ok(c)
                 }) {
                     Ok(new) => {
                         tracing::info!("configuration reloaded: {} targets", new.targets.len());
-                        for w in new.warnings.iter().cloned().chain(linkscope::thresh::cleartext_warnings(&new)) {
+                        for w in new
+                            .warnings
+                            .iter()
+                            .cloned()
+                            .chain(linkscope::thresh::cleartext_warnings(&new))
+                        {
                             tracing::warn!("{w}");
                         }
                         cfg = Arc::new(new);
                         stamps = mtimes(&cfg);
                         // The new engine takes over the threshold actions in flight: a reload
                         // neither waits for a slow mail server nor drops what it was sending.
-                        let old = std::mem::replace(&mut engine, Engine::new(cfg.clone(), oids.clone(), state.clone(), cache_path.clone(), opts.clone()));
+                        let old = std::mem::replace(
+                            &mut engine,
+                            Engine::new(
+                                cfg.clone(),
+                                oids.clone(),
+                                state.clone(),
+                                cache_path.clone(),
+                                opts.clone(),
+                            ),
+                        );
                         engine.adopt(old);
                     }
                     Err(e) => {
@@ -330,7 +464,9 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
     };
     let cut = engine.finish_or(stop).await;
     if cut > 0 {
-        tracing::warn!("stopped with {cut} batches of threshold actions unfinished; their notices were not sent");
+        tracing::warn!(
+            "stopped with {cut} batches of threshold actions unfinished; their notices were not sent"
+        );
     }
     Ok(ExitCode::SUCCESS)
 }
