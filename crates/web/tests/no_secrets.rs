@@ -10,7 +10,15 @@ use axum::http::Request;
 use linkscope_web::{LiveState, TargetLive};
 use tower::ServiceExt;
 
-const SECRETS: &[&str] = &["Comm-un1ty", "authpass-SECRET", "privpass-SECRET", "--password=cmdSECRET", "hooktoken-SECRET", "hmackey-SECRET", "mailpass-SECRET"];
+const SECRETS: &[&str] = &[
+    "Comm-un1ty",
+    "authpass-SECRET",
+    "privpass-SECRET",
+    "--password=cmdSECRET",
+    "hooktoken-SECRET",
+    "hmackey-SECRET",
+    "mailpass-SECRET",
+];
 /// Not secrets, but the server's business on a UI without a login: where the threshold programs
 /// live (a program of the test's own, see below) and whom threshold mail goes to.
 const PRIVATE: &[&str] = &["thresh-hook-SECRET", "noc-private@example.com"];
@@ -39,19 +47,50 @@ async fn api_never_returns_credentials() {
         ),
     )
     .unwrap();
-    let cfg = linkscope_config::load(&cfg_path, &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off }, &linkscope_config::CheckOptions::default()).unwrap();
-    let mut st = LiveState { config: Some(Arc::new(cfg.clone())), ..Default::default() };
+    let cfg = linkscope_config::load(
+        &cfg_path,
+        &linkscope_config::ReadOptions {
+            trust: linkscope_config::TrustPolicy::Off,
+        },
+        &linkscope_config::CheckOptions::default(),
+    )
+    .unwrap();
+    let mut st = LiveState {
+        config: Some(Arc::new(cfg.clone())),
+        ..Default::default()
+    };
     for t in &cfg.targets {
         // Worst case: an error message that quotes the whole Target text.
-        st.targets.insert(t.name.clone(), TargetLive { error: Some(format!("failed: {}", t.target_text)), last_poll: 1, ..Default::default() });
+        st.targets.insert(
+            t.name.clone(),
+            TargetLive {
+                error: Some(format!("failed: {}", t.target_text)),
+                last_poll: 1,
+                ..Default::default()
+            },
+        );
     }
-    st.warnings.push("warning mentioning Comm-un1ty and /usr/local/bin/probe --password=cmdSECRET".into());
+    st.warnings
+        .push("warning mentioning Comm-un1ty and /usr/local/bin/probe --password=cmdSECRET".into());
     st.warnings.push("posting to https://hooks.example.com/t/hooktoken-SECRET with hmackey-SECRET-0123456789 failed; mail login mailpass-SECRET refused".into());
     let state = Arc::new(RwLock::new(st));
     let app = linkscope_web::router(state);
-    for uri in ["/api/summary", "/api/targets", "/api/targets/a", "/api/targets/b", "/api/targets/c", "/metrics"] {
-        let res = app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
-        let body = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
+    for uri in [
+        "/api/summary",
+        "/api/targets",
+        "/api/targets/a",
+        "/api/targets/b",
+        "/api/targets/c",
+        "/metrics",
+    ] {
+        let res = app
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(res.into_body(), 1 << 20)
+            .await
+            .unwrap();
         let text = String::from_utf8_lossy(&body);
         for s in SECRETS.iter().chain(PRIVATE) {
             assert!(!text.contains(s), "{uri} leaks {s}: {text}");

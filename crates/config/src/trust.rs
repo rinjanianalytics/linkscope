@@ -34,13 +34,22 @@ const S_ISVTX: u32 = 0o1000;
 /// Check `path` against `policy`.
 /// Check an already opened config file (`fstat` on the descriptor, so the
 /// file checked is the file read) and the directory that really contains it.
-pub fn check_file_trust(path: &Path, file: &std::fs::File, policy: TrustPolicy) -> Result<(), ConfigError> {
+pub fn check_file_trust(
+    path: &Path,
+    file: &std::fs::File,
+    policy: TrustPolicy,
+) -> Result<(), ConfigError> {
     if policy == TrustPolicy::Off {
         return Ok(());
     }
-    let Some(problem) = trust_problem(path, file) else { return Ok(()) };
+    let Some(problem) = trust_problem(path, file) else {
+        return Ok(());
+    };
     match policy {
-        TrustPolicy::Enforce => Err(ConfigError::Untrusted { path: path.to_path_buf(), reason: problem }),
+        TrustPolicy::Enforce => Err(ConfigError::Untrusted {
+            path: path.to_path_buf(),
+            reason: problem,
+        }),
         _ => {
             eprintln!("WARNING: {}: {problem}", path.display());
             Ok(())
@@ -68,14 +77,25 @@ fn trust_problem(path: &Path, file: &std::fs::File) -> Option<String> {
         ));
     }
     // The directory that really holds the file that was opened (not the name resolved again).
-    let real = opened_path(file).or_else(|| std::fs::canonicalize(path).ok()).unwrap_or_else(|| path.to_path_buf());
+    let real = opened_path(file)
+        .or_else(|| std::fs::canonicalize(path).ok())
+        .unwrap_or_else(|| path.to_path_buf());
     // SAFETY: getegid takes no arguments, has no preconditions and cannot fail.
     let egid = unsafe { libc::getegid() };
     // Whoever can rename an entry in any directory on the way can put another file in its place.
-    for dir in real.ancestors().skip(1).filter(|d| !d.as_os_str().is_empty()) {
-        let Ok(d) = std::fs::metadata(dir) else { continue };
+    for dir in real
+        .ancestors()
+        .skip(1)
+        .filter(|d| !d.as_os_str().is_empty())
+    {
+        let Ok(d) = std::fs::metadata(dir) else {
+            continue;
+        };
         if let Some(why) = dir_problem(d.uid(), d.gid(), d.mode(), euid, egid) {
-            return Some(format!("{} {why}, so others could replace the file", dir.display()));
+            return Some(format!(
+                "{} {why}, so others could replace the file",
+                dir.display()
+            ));
         }
     }
     None
@@ -84,7 +104,9 @@ fn trust_problem(path: &Path, file: &std::fs::File) -> Option<String> {
 /// The path of an opened file, as the kernel knows it.
 fn opened_path(file: &std::fs::File) -> Option<std::path::PathBuf> {
     use std::os::fd::AsRawFd;
-    std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd())).ok().filter(|p| p.is_absolute())
+    std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd()))
+        .ok()
+        .filter(|p| p.is_absolute())
 }
 
 /// Why a directory on the way to the config is not safe, if it is not: it must belong to root or
@@ -92,7 +114,9 @@ fn opened_path(file: &std::fs::File) -> Option<std::path::PathBuf> {
 /// running account's own (a user private group), unless it is sticky.
 fn dir_problem(uid: u32, gid: u32, mode: u32, euid: u32, egid: u32) -> Option<String> {
     if uid != 0 && uid != euid {
-        return Some(format!("belongs to uid {uid} (expected root or uid {euid})"));
+        return Some(format!(
+            "belongs to uid {uid} (expected root or uid {euid})"
+        ));
     }
     if mode & S_ISVTX != 0 {
         return None;

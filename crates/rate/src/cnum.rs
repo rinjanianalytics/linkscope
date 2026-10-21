@@ -186,10 +186,12 @@ fn hex_float(s: &[u8]) -> f64 {
         }
         p += 1;
     }
-    if p < s.len() && (s[p] == b'p' || s[p] == b'P')
-        && let ScanInt::Ok(e, _) = scan_int_nows(&s[p + 1..]) {
-            exp = exp.saturating_add(e);
-        }
+    if p < s.len()
+        && (s[p] == b'p' || s[p] == b'P')
+        && let ScanInt::Ok(e, _) = scan_int_nows(&s[p + 1..])
+    {
+        exp = exp.saturating_add(e);
+    }
     if sticky {
         mant |= 1;
     }
@@ -253,9 +255,18 @@ mod tests {
 
     #[test]
     fn scanf_saturates() {
-        assert!(matches!(scan_int(b"99999999999999999999", 0), ScanInt::Ok(i64::MAX, 20)));
-        assert!(matches!(scan_int(b" -99999999999999999999", 0), ScanInt::Ok(i64::MIN, 22)));
-        assert!(matches!(scan_int(b"-9223372036854775808", 0), ScanInt::Ok(i64::MIN, _)));
+        assert!(matches!(
+            scan_int(b"99999999999999999999", 0),
+            ScanInt::Ok(i64::MAX, 20)
+        ));
+        assert!(matches!(
+            scan_int(b" -99999999999999999999", 0),
+            ScanInt::Ok(i64::MIN, 22)
+        ));
+        assert!(matches!(
+            scan_int(b"-9223372036854775808", 0),
+            ScanInt::Ok(i64::MIN, _)
+        ));
         assert!(matches!(scan_int(b"+5", 0), ScanInt::Ok(5, 2)));
         assert!(matches!(scan_int(b"- 5", 0), ScanInt::Fail(1)));
         assert!(matches!(scan_int(b"   ", 0), ScanInt::Eof));
@@ -279,7 +290,23 @@ mod tests {
 
     #[test]
     fn itoa() {
-        for v in [0, 1, -1, 9, 10, 42, 99, 100, 101, 999, -1000, i64::MAX, i64::MIN, 1_000_000, 12_345] {
+        for v in [
+            0,
+            1,
+            -1,
+            9,
+            10,
+            42,
+            99,
+            100,
+            101,
+            999,
+            -1000,
+            i64::MAX,
+            i64::MIN,
+            1_000_000,
+            12_345,
+        ] {
             let mut o = Vec::new();
             push_i64(&mut o, v);
             assert_eq!(o, v.to_string().into_bytes());

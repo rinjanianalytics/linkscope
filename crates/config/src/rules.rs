@@ -67,7 +67,9 @@ fn re(p: &'static str) -> Regex {
     use std::sync::{LazyLock, Mutex};
     static CACHE: LazyLock<Mutex<HashMap<&'static str, Regex>>> = LazyLock::new(Default::default);
     let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    c.entry(p).or_insert_with(|| Regex::new(p).expect("static regex")).clone()
+    c.entry(p)
+        .or_insert_with(|| Regex::new(p).expect("static regex"))
+        .clone()
 }
 
 fn yes_no(v: &str) -> bool {
@@ -110,13 +112,25 @@ fn interval_ok(v: &str) -> bool {
 fn host_like(host: &str) -> bool {
     let h = host.trim_start_matches('[').trim_end_matches(']');
     h.parse::<std::net::IpAddr>().is_ok()
-        || (!h.is_empty() && h.len() <= 253 && h.trim_end_matches('.').split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')))
+        || (!h.is_empty()
+            && h.len() <= 253
+            && h.trim_end_matches('.').split('.').all(|l| {
+                !l.is_empty()
+                    && l.len() <= 63
+                    && l.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            }))
 }
 
 /// A file that can be read, checked without blocking (a FIFO no longer hangs the check).
 fn readable_file(v: &str) -> bool {
     use std::os::unix::fs::OpenOptionsExt;
-    std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC).open(v).and_then(|f| f.metadata()).is_ok_and(|m| m.is_file())
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(v)
+        .and_then(|f| f.metadata())
+        .is_ok_and(|m| m.is_file())
 }
 
 /// `ThreshMailServer`: a host name, or LinkScope's `host:port`.
@@ -276,7 +290,13 @@ const UNKNOWN: &str = "\u{0}unknown";
 
 /// MRTG's `quickcheck`: validate `key` (global or per-target) and produce
 /// MRTG's error text on failure.
-pub fn quickcheck(key: &str, per_target: bool, value: &str, file: &Path, line: usize) -> Result<(), ConfigError> {
+pub fn quickcheck(
+    key: &str,
+    per_target: bool,
+    value: &str,
+    file: &Path,
+    line: usize,
+) -> Result<(), ConfigError> {
     // Third-party `tool*key` entries are not checked (MRTG passes no rules).
     if key.contains('*') && !key.starts_with('*') {
         return Ok(());
@@ -286,11 +306,21 @@ pub fn quickcheck(key: &str, per_target: bool, value: &str, file: &Path, line: u
         Err(m) if m == UNKNOWN => Err(ConfigError::at(
             file,
             line,
-            format!("Unknown Option \"{key}\" on this line or above. Check mrtg-reference for help"),
+            format!(
+                "Unknown Option \"{key}\" on this line or above. Check mrtg-reference for help"
+            ),
         )),
         Err(m) => {
-            let name = if per_target { format!("{key}[]") } else { key.to_string() };
-            Err(ConfigError::at(file, line, format!("CFG Error in \"{name}\": {m}")))
+            let name = if per_target {
+                format!("{key}[]")
+            } else {
+                key.to_string()
+            };
+            Err(ConfigError::at(
+                file,
+                line,
+                format!("CFG Error in \"{name}\": {m}"),
+            ))
         }
     }
 }
@@ -303,8 +333,20 @@ pub fn is_known(key: &str, per_target: bool) -> bool {
 /// `WebHosts:`: the host names the web UI answers to besides IP addresses and `localhost`,
 /// separated by commas or spaces, lowercase; `*` answers to any. `None` when one is not a name.
 pub fn web_hosts(v: &str) -> Option<Vec<String>> {
-    let names: Vec<String> = v.split([',', ' ', '\t']).filter(|s| !s.is_empty()).map(|s| s.to_ascii_lowercase()).collect();
-    let name_ok = |n: &str| n == "*" || (n.len() <= 253 && n.split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')));
+    let names: Vec<String> = v
+        .split([',', ' ', '\t'])
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
+    let name_ok = |n: &str| {
+        n == "*"
+            || (n.len() <= 253
+                && n.split('.').all(|l| {
+                    !l.is_empty()
+                        && l.len() <= 63
+                        && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                }))
+    };
     (!names.is_empty() && names.iter().all(|n| name_ok(n))).then_some(names)
 }
 

@@ -53,7 +53,12 @@ impl IfSel {
     pub fn key(&self) -> &str {
         match self {
             IfSel::None => "",
-            IfSel::If(k) | IfSel::Ip(k) | IfSel::Descr(k) | IfSel::Name(k) | IfSel::Eth(k) | IfSel::Type(k) => k,
+            IfSel::If(k)
+            | IfSel::Ip(k)
+            | IfSel::Descr(k)
+            | IfSel::Name(k)
+            | IfSel::Eth(k)
+            | IfSel::Type(k) => k,
         }
     }
 }
@@ -84,9 +89,14 @@ impl SnmpConn {
     /// Parse MRTG's SnmpInfo string (everything after the host, starting with `:`).
     pub fn parse(info: &str) -> Result<SnmpConn, String> {
         let opts = info.strip_prefix(':').unwrap_or(info);
-        let mut f: Vec<&str> = if info.is_empty() { vec![] } else { opts.splitn(6, ':').collect() };
+        let mut f: Vec<&str> = if info.is_empty() {
+            vec![]
+        } else {
+            opts.splitn(6, ':').collect()
+        };
         f.resize(6, "");
-        let (mut port_s, timeout_s, retries_s, backoff_s, version_s, v4_s) = (f[0], f[1], f[2], f[3], f[4], f[5]);
+        let (mut port_s, timeout_s, retries_s, backoff_s, version_s, v4_s) =
+            (f[0], f[1], f[2], f[3], f[4], f[5]);
         let (mut local_host, mut local_port) = (None, None);
         if let Some((p, l)) = port_s.split_once('!') {
             port_s = p;
@@ -102,7 +112,13 @@ impl SnmpConn {
             }
         }
         let num = |s: &str, what: &str| -> Result<Option<f64>, String> {
-            if s.is_empty() { Ok(None) } else { s.parse::<f64>().map(Some).map_err(|_| format!("bad {what} '{s}'")) }
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                s.parse::<f64>()
+                    .map(Some)
+                    .map_err(|_| format!("bad {what} '{s}'"))
+            }
         };
         let version = match version_s {
             "" | "1" => SnmpVersion::V1,
@@ -111,7 +127,11 @@ impl SnmpConn {
             v => return Err(format!("unknown SNMP version '{v}'")),
         };
         Ok(SnmpConn {
-            port: if port_s.is_empty() { None } else { Some(port_s.parse().map_err(|_| format!("bad port '{port_s}'"))?) },
+            port: if port_s.is_empty() {
+                None
+            } else {
+                Some(port_s.parse().map_err(|_| format!("bad port '{port_s}'"))?)
+            },
             timeout: num(timeout_s, "timeout")?,
             retries: num(retries_s, "retries")?.map(|r| r as u32),
             backoff: num(backoff_s, "backoff")?,
@@ -196,7 +216,7 @@ fn patterns() -> &'static Patterns {
         // semantics exactly (no Unicode \w, \d, \s).
         let w = r"[A-Za-z0-9_]";
         let if_simple = String::from(
-            r"([0-9]+)|/([0-9]+(?:\.[0-9]+)+)|\\((?:\\[ \t\n\r\x0b\x0c:&@]|[^ \t\n\r\x0b\x0c:&@])+)|\#((?:\\[ \t\n\r\x0b\x0c:&@]|[^ \t\n\r\x0b\x0c:&@])+)|!([a-fA-F0-9]+(?:-[a-fA-F0-9]+)+)|%([0-9]+)"
+            r"([0-9]+)|/([0-9]+(?:\.[0-9]+)+)|\\((?:\\[ \t\n\r\x0b\x0c:&@]|[^ \t\n\r\x0b\x0c:&@])+)|\#((?:\\[ \t\n\r\x0b\x0c:&@]|[^ \t\n\r\x0b\x0c:&@])+)|!([a-fA-F0-9]+(?:-[a-fA-F0-9]+)+)|%([0-9]+)",
         );
         // Note the alternation precedence copied from MRTG: the leading '\.'
         // belongs to the numeric alternative only.
@@ -213,7 +233,9 @@ fn patterns() -> &'static Patterns {
         };
         Patterns {
             external: build(r"^(.*?)`((?:\\`|[^`])+)`(.*)$".to_string()),
-            complex: build(format!(r"^(.*?)({if_complex}&{if_complex}:{if_comhost})(.*)$")),
+            complex: build(format!(
+                r"^(.*?)({if_complex}&{if_complex}:{if_comhost})(.*)$"
+            )),
             simple: build(format!(r"^(.*?)((-)?(?:{if_simple}):{if_comhost})(.*)$")),
         }
     });
@@ -221,7 +243,8 @@ fn patterns() -> &'static Patterns {
 }
 
 fn cap(c: &regex::bytes::Captures, i: usize) -> Option<String> {
-    c.get(i).map(|m| String::from_utf8_lossy(m.as_bytes()).into_owned())
+    c.get(i)
+        .map(|m| String::from_utf8_lossy(m.as_bytes()).into_owned())
 }
 
 struct IfSpec {
@@ -238,7 +261,13 @@ struct IfSpec {
 
 impl SourceTable {
     /// Parse one `Target[]` value, adding new sources to the table.
-    pub fn parse(&mut self, target: &str, ipv4only: bool, snmp_options: &SnmpOptions, nohc: bool) -> Result<ParsedTarget, String> {
+    pub fn parse(
+        &mut self,
+        target: &str,
+        ipv4only: bool,
+        snmp_options: &SnmpOptions,
+        nohc: bool,
+    ) -> Result<ParsedTarget, String> {
         let pats = patterns();
         let mut string = target.to_string();
         let mut parsed = String::new();
@@ -261,7 +290,9 @@ impl SourceTable {
                 Some(&i) => i,
                 None => {
                     let i = self.sources.len();
-                    self.sources.push(Source::Exec(ExecSource { command: t.replace("\\`", "`") }));
+                    self.sources.push(Source::Exec(ExecSource {
+                        command: t.replace("\\`", "`"),
+                    }));
                     self.index.insert(t.clone(), i);
                     i
                 }
@@ -278,7 +309,10 @@ impl SourceTable {
             let pre = cap(&c, 1).unwrap_or_default();
             let t = cap(&c, 2).unwrap_or_default();
             let post = cap(&c, 24).unwrap_or_default();
-            let mut sel = [[None, None, None, None, None, None], [None, None, None, None, None, None]];
+            let mut sel = [
+                [None, None, None, None, None, None],
+                [None, None, None, None, None, None],
+            ];
             for (d, base) in [(0usize, 3usize), (1, 11)] {
                 for (k, slot) in sel[d].iter_mut().enumerate() {
                     *slot = cap(&c, base + 2 + k);
@@ -295,7 +329,8 @@ impl SourceTable {
                 conv: cap(&c, 23),
             };
             // MRTG: retry later as a simple target if a Descr/Name ends in a backslash.
-            let ends_bs = |d: usize, k: usize| spec.sel[d][k].as_deref().is_some_and(|v| v.ends_with('\\'));
+            let ends_bs =
+                |d: usize, k: usize| spec.sel[d][k].as_deref().is_some_and(|v| v.ends_with('\\'));
             if ends_bs(0, 2) || ends_bs(0, 3) || ends_bs(1, 2) || ends_bs(1, 3) {
                 parsed.push_str(&pre);
                 parsed.push_str(&t);
@@ -331,7 +366,14 @@ impl SourceTable {
                     // Groups: 3 reversal, 4..=9 selector, 10 community, 11 IPv6 host,
                     // 12 DNS host, 13 SnmpInfo, 14 conversion.
                     let d1 = if rev.as_deref() == Some("-") { 1 } else { 0 };
-                    let one: [Option<String>; 6] = [cap(&c, 4), cap(&c, 5), cap(&c, 6), cap(&c, 7), cap(&c, 8), cap(&c, 9)];
+                    let one: [Option<String>; 6] = [
+                        cap(&c, 4),
+                        cap(&c, 5),
+                        cap(&c, 6),
+                        cap(&c, 7),
+                        cap(&c, 8),
+                        cap(&c, 9),
+                    ];
                     let spec = IfSpec {
                         oid: [None, None],
                         alt: [Some("1".into()), Some("1".into())],
@@ -357,7 +399,11 @@ impl SourceTable {
         let rewritten = parsed + &string;
         Ok(ParsedTarget {
             rewritten,
-            unique: if others == 0 && unique >= 0 { Some(unique as usize) } else { None },
+            unique: if others == 0 && unique >= 0 {
+                Some(unique as usize)
+            } else {
+                None
+            },
         })
     }
 }
@@ -366,7 +412,8 @@ impl SourceTable {
 /// field (version) is 2 or 3: `m/(?::[^:]*){4}:[32][Cc]?/`.
 fn hc_requested(info: &str) -> bool {
     use std::sync::LazyLock;
-    static R: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?::[^:]*){4}:[32][Cc]?").unwrap());
+    static R: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?::[^:]*){4}:[32][Cc]?").unwrap());
     R.is_match(info)
 }
 
@@ -379,12 +426,20 @@ fn fix_hc(mut spec: IfSpec, nohc: bool, d1: usize) -> IfSpec {
     spec
 }
 
-fn new_snmp_source(t: &str, spec: IfSpec, ipv4only: bool, snmp_options: &SnmpOptions) -> Result<SnmpSource, String> {
+fn new_snmp_source(
+    t: &str,
+    spec: IfSpec,
+    ipv4only: bool,
+    snmp_options: &SnmpOptions,
+) -> Result<SnmpSource, String> {
     let mut sels = [IfSel::None, IfSel::None];
     let mut oids = [String::new(), String::new()];
     for i in 0..2 {
         if spec.oid[i].is_none() && spec.alt[i].is_none() {
-            return Err(format!("Malformed {}ifSpec in '{t}'", if i == 1 { "output " } else { "input " }));
+            return Err(format!(
+                "Malformed {}ifSpec in '{t}'",
+                if i == 1 { "output " } else { "input " }
+            ));
         }
         oids[i] = spec.oid[i].clone().unwrap_or_default();
         let s = &spec.sel[i];
@@ -445,11 +500,12 @@ fn unescape(s: &str, set: &str) -> String {
     while let Some(c) = it.next() {
         if c == '\\'
             && let Some(&n) = it.peek()
-                && set.contains(n) {
-                    out.push(n);
-                    it.next();
-                    continue;
-                }
+            && set.contains(n)
+        {
+            out.push(n);
+            it.next();
+            continue;
+        }
         out.push(c);
     }
     out
@@ -475,7 +531,9 @@ mod tests {
         let (st, p) = parse("2:public@router1");
         assert_eq!(p.rewritten, " $target->[0]{$mode} ");
         assert_eq!(p.unique, Some(0));
-        let Source::Snmp(s) = &st.sources[0] else { panic!() };
+        let Source::Snmp(s) = &st.sources[0] else {
+            panic!()
+        };
         assert_eq!(s.oid, ["ifInOctets".to_string(), "ifOutOctets".to_string()]);
         assert_eq!(s.sel[0], IfSel::If("2".into()));
         assert_eq!(s.host, "router1");
@@ -484,8 +542,13 @@ mod tests {
     #[test]
     fn hc_and_reverse() {
         let (st, _) = parse("-#Gi0/1:pub@r:::::2");
-        let Source::Snmp(s) = &st.sources[0] else { panic!() };
-        assert_eq!(s.oid, ["ifHCOutOctets".to_string(), "ifHCInOctets".to_string()]);
+        let Source::Snmp(s) = &st.sources[0] else {
+            panic!()
+        };
+        assert_eq!(
+            s.oid,
+            ["ifHCOutOctets".to_string(), "ifHCInOctets".to_string()]
+        );
         assert_eq!(s.sel[1], IfSel::Name("Gi0/1".into()));
         assert_eq!(s.conn.version, SnmpVersion::V2c);
     }
@@ -503,7 +566,9 @@ mod tests {
         let (st, p) = parse("ifInErrors.3&ifOutErrors.3:pub@[2001:db8::1]:161 + `/bin/echo 1`");
         assert_eq!(st.sources.len(), 2);
         assert!(matches!(st.sources[0], Source::Exec(_)));
-        let Source::Snmp(s) = &st.sources[1] else { panic!() };
+        let Source::Snmp(s) = &st.sources[1] else {
+            panic!()
+        };
         assert_eq!(s.host, "[2001:db8::1]");
         assert_eq!(s.oid[0], "ifInErrors");
         assert_eq!(s.conn.port, Some(161));
@@ -513,10 +578,14 @@ mod tests {
     #[test]
     fn mac_normalised_and_escapes() {
         let (st, _) = parse(r"!0-1b-2c-3-4-5:pub@h");
-        let Source::Snmp(s) = &st.sources[0] else { panic!() };
+        let Source::Snmp(s) = &st.sources[0] else {
+            panic!()
+        };
         assert_eq!(s.sel[0], IfSel::Eth("00-1b-2c-03-04-05".into()));
         let (st, _) = parse(r"\Port\ 1\:2:pub@h");
-        let Source::Snmp(s) = &st.sources[0] else { panic!() };
+        let Source::Snmp(s) = &st.sources[0] else {
+            panic!()
+        };
         assert_eq!(s.sel[0], IfSel::Descr("Port 1:2".into()));
     }
 }

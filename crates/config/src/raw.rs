@@ -22,9 +22,9 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::Serialize;
 
+use crate::ConfigError;
 use crate::rules;
 use crate::trust::{TrustPolicy, check_file_trust};
-use crate::ConfigError;
 
 /// Maximum nesting depth of `Include:` directives.
 pub const MAX_INCLUDE_DEPTH: usize = 16;
@@ -61,7 +61,10 @@ pub struct RawConfig {
 impl RawConfig {
     /// Look up `Key[target]`.
     pub fn get(&self, key: &str, target: &str) -> Option<&str> {
-        self.per_target.get(key).and_then(|m| m.get(target)).map(String::as_str)
+        self.per_target
+            .get(key)
+            .and_then(|m| m.get(target))
+            .map(String::as_str)
     }
 
     fn set(&mut self, key: &str, target: &str, value: String) {
@@ -112,26 +115,50 @@ impl Patterns {
     }
 }
 
-fn load_lines(path: &Path, opts: &ReadOptions, budget: &mut Budget) -> Result<Vec<String>, ConfigError> {
+fn load_lines(
+    path: &Path,
+    opts: &ReadOptions,
+    budget: &mut Budget,
+) -> Result<Vec<String>, ConfigError> {
     use std::os::unix::fs::OpenOptionsExt;
     if budget.files == 0 {
-        return Err(ConfigError::at(path, 0, format!("more than {MAX_CONFIG_FILES} configuration files read in all (Include)")));
+        return Err(ConfigError::at(
+            path,
+            0,
+            format!("more than {MAX_CONFIG_FILES} configuration files read in all (Include)"),
+        ));
     }
     budget.files -= 1;
     // Not blocking, and regular files only: a FIFO or a device named by an Include hung the
     // reader or streamed forever.
-    let f = fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC).open(path).map_err(|e| ConfigError::Io {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
+    let f = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|e| ConfigError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
     check_file_trust(path, &f, opts.trust)?;
     if !f.metadata().is_ok_and(|m| m.is_file()) {
         return Err(ConfigError::at(path, 0, "not a regular file"));
     }
     let mut data = Vec::new();
-    f.take(budget.bytes.saturating_add(1)).read_to_end(&mut data).map_err(|e| ConfigError::Io { path: path.to_path_buf(), source: e })?;
+    f.take(budget.bytes.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|e| ConfigError::Io {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
     if data.len() as u64 > budget.bytes {
-        return Err(ConfigError::at(path, 0, format!("more than {} MB of configuration read in all (Include)", MAX_CONFIG_BYTES >> 20)));
+        return Err(ConfigError::at(
+            path,
+            0,
+            format!(
+                "more than {} MB of configuration read in all (Include)",
+                MAX_CONFIG_BYTES >> 20
+            ),
+        ));
     }
     budget.bytes -= data.len() as u64;
     let mut out = Vec::new();
@@ -155,7 +182,10 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
     };
     let top_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
 
-    let mut budget = Budget { files: MAX_CONFIG_FILES, bytes: MAX_CONFIG_BYTES };
+    let mut budget = Budget {
+        files: MAX_CONFIG_FILES,
+        bytes: MAX_CONFIG_BYTES,
+    };
     let mut stack: Vec<Source> = vec![Source {
         lines: load_lines(path, opts, &mut budget)?.into_iter(),
         file: path.to_path_buf(),
@@ -196,34 +226,48 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
             // A relative name is relative to the top configuration's directory, MRTG's own
             // fallback. MRTG tried the working directory first, so where the daemon was started
             // decided which file was read; that is no longer the case.
-            let spec_path = if Path::new(&spec).is_absolute() { PathBuf::from(&spec) } else { top_dir.join(&spec) };
+            let spec_path = if Path::new(&spec).is_absolute() {
+                PathBuf::from(&spec)
+            } else {
+                top_dir.join(&spec)
+            };
             if spec.contains('*') {
                 files = glob_sorted(&spec_path.to_string_lossy());
             } else {
                 files.push(spec_path);
             }
             if stack.len() + 1 > MAX_INCLUDE_DEPTH {
-                return Err(ConfigError::at(&file, line_no, format!(
-                    "Include nesting deeper than {MAX_INCLUDE_DEPTH} levels"
-                )));
+                return Err(ConfigError::at(
+                    &file,
+                    line_no,
+                    format!("Include nesting deeper than {MAX_INCLUDE_DEPTH} levels"),
+                ));
             }
             // Push in reverse so the first file is read first.
             for f in files.into_iter().rev() {
                 let key = canonical(&f);
                 if open_files.contains(&key) {
-                    return Err(ConfigError::at(&file, line_no, format!(
-                        "Include cycle: {} includes itself", f.display()
-                    )));
+                    return Err(ConfigError::at(
+                        &file,
+                        line_no,
+                        format!("Include cycle: {} includes itself", f.display()),
+                    ));
                 }
                 let lines = load_lines(&f, opts, &mut budget).map_err(|e| match e {
-                    ConfigError::Io { path, .. } => ConfigError::at(&file, line_no, format!(
-                        "unable to open include file: {}", path.display()
-                    )),
+                    ConfigError::Io { path, .. } => ConfigError::at(
+                        &file,
+                        line_no,
+                        format!("unable to open include file: {}", path.display()),
+                    ),
                     other => other,
                 })?;
                 open_files.insert(key);
                 raw.files.push(f.clone());
-                stack.push(Source { lines: lines.into_iter(), file: f, line_no: 0 });
+                stack.push(Source {
+                    lines: lines.into_iter(),
+                    file: f,
+                    line_no: 0,
+                });
             }
             continue;
         }
@@ -239,29 +283,42 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
             continue;
         }
         // `get`: byte 7 may fall inside a character (`Title[é]: x` panicked here).
-        if line.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("supress")) {
+        if line
+            .get(..7)
+            .is_some_and(|p| p.eq_ignore_ascii_case("supress"))
+        {
             line = format!("suppress{}", &line[7..]);
         }
 
         // Continuation line.
         if first.is_some()
-            && let Some(c) = pat.continuation.captures(&line) {
-                let text = c[1].to_string();
-                let f = first.as_deref().unwrap();
-                match second.as_deref() {
-                    Some("^") => push_nl(pre.entry(f.to_string()).or_default(), &text),
-                    Some("$") => push_nl(post.entry(f.to_string()).or_default(), &text),
-                    Some("_") => push_nl(deflt.entry(f.to_string()).or_default(), &text),
-                    // MRTG quirk, reproduced on purpose: after a *global* key `$second`
-                    // is '' so the continuation lands in `$rcfg{key}{''}` and is
-                    // effectively ignored. `check` warns about it.
-                    Some(t) => raw.append(f, t, &format!(" {text}")),
-                    None => {}
-                }
-                continue;
+            && let Some(c) = pat.continuation.captures(&line)
+        {
+            let text = c[1].to_string();
+            let f = first.as_deref().unwrap();
+            match second.as_deref() {
+                Some("^") => push_nl(pre.entry(f.to_string()).or_default(), &text),
+                Some("$") => push_nl(post.entry(f.to_string()).or_default(), &text),
+                Some("_") => push_nl(deflt.entry(f.to_string()).or_default(), &text),
+                // MRTG quirk, reproduced on purpose: after a *global* key `$second`
+                // is '' so the continuation lands in `$rcfg{key}{''}` and is
+                // effectively ignored. `check` warns about it.
+                Some(t) => raw.append(f, t, &format!(" {text}")),
+                None => {}
             }
+            continue;
+        }
 
-        finish_key(&mut raw, &first, &second, &post, &deflt, &mut defaulted, &file, line_no)?;
+        finish_key(
+            &mut raw,
+            &first,
+            &second,
+            &post,
+            &deflt,
+            &mut defaulted,
+            &file,
+            line_no,
+        )?;
 
         if let Some(c) = pat.target_line.captures(&line) {
             let mut key = c[1].to_lowercase();
@@ -274,15 +331,27 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
             second = Some(target.clone());
             match target.as_str() {
                 "^" => {
-                    if value.is_empty() { pre.remove(&key); } else { pre.insert(key, value); }
+                    if value.is_empty() {
+                        pre.remove(&key);
+                    } else {
+                        pre.insert(key, value);
+                    }
                     continue;
                 }
                 "$" => {
-                    if value.is_empty() { post.remove(&key); } else { post.insert(key, value); }
+                    if value.is_empty() {
+                        post.remove(&key);
+                    } else {
+                        post.insert(key, value);
+                    }
                     continue;
                 }
                 "_" => {
-                    if value.is_empty() { deflt.shift_remove(&key); } else { deflt.insert(key, value); }
+                    if value.is_empty() {
+                        deflt.shift_remove(&key);
+                    } else {
+                        deflt.insert(key, value);
+                    }
                     continue;
                 }
                 _ => {}
@@ -305,10 +374,14 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
             }
             let id = (key.clone(), target.clone());
             if let Some((pf, pl)) = seen.get(&id) {
-                return Err(ConfigError::at(&file, line_no, format!(
-                    "duplicate definition for {key}[{target}]. First definition is on line {pl} of {}",
-                    pf.display()
-                )));
+                return Err(ConfigError::at(
+                    &file,
+                    line_no,
+                    format!(
+                        "duplicate definition for {key}[{target}]. First definition is on line {pl} of {}",
+                        pf.display()
+                    ),
+                ));
             }
             seen.insert(id.clone(), (file.clone(), line_no));
             if defaulted.remove(&id) {
@@ -324,10 +397,23 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
             second = Some(String::new());
             continue;
         }
-        return Err(ConfigError::at(&file, line_no, format!("Line ({line}) does not make sense")));
+        return Err(ConfigError::at(
+            &file,
+            line_no,
+            format!("Line ({line}) does not make sense"),
+        ));
     }
 
-    finish_key(&mut raw, &first, &second, &post, &deflt, &mut defaulted, &last_file, last_line)?;
+    finish_key(
+        &mut raw,
+        &first,
+        &second,
+        &post,
+        &deflt,
+        &mut defaulted,
+        &last_file,
+        last_line,
+    )?;
     Ok(raw)
 }
 
@@ -343,19 +429,22 @@ fn finish_key(
     file: &Path,
     line: usize,
 ) -> Result<(), ConfigError> {
-    let Some(f) = first.as_deref() else { return Ok(()) };
+    let Some(f) = first.as_deref() else {
+        return Ok(());
+    };
     if let Some(t) = second.as_deref()
         && !matches!(t, "^" | "$" | "_")
-            && let Some(p) = post.get(f) {
-                let id = (f.to_string(), t.to_string());
-                if defaulted.remove(&id) {
-                    raw.set(f, t, p.clone());
-                } else {
-                    let nsc = raw.global.get("nospacechar").cloned();
-                    let s = apply_nospace(p, nsc.as_deref(), false);
-                    raw.append(f, t, &s);
-                }
-            }
+        && let Some(p) = post.get(f)
+    {
+        let id = (f.to_string(), t.to_string());
+        if defaulted.remove(&id) {
+            raw.set(f, t, p.clone());
+        } else {
+            let nsc = raw.global.get("nospacechar").cloned();
+            let s = apply_nospace(p, nsc.as_deref(), false);
+            raw.append(f, t, &s);
+        }
+    }
     match second.as_deref() {
         Some("_") => {
             if let Some(v) = deflt.get(f) {
@@ -379,13 +468,18 @@ fn finish_key(
 /// append a space; for suffixes the default is to prepend one.
 fn apply_nospace(v: &str, nospacechar: Option<&str>, is_prefix: bool) -> String {
     if let Some(n) = nospacechar.filter(|n| !n.is_empty())
-        && let Some(stripped) = v.strip_suffix(n) {
-            // MRTG uses `m/(.*)\Q$nsc\E$/` and `.` does not match a newline,
-            // so for a multi-line prefix/suffix only the last line survives.
-            let last = stripped.rsplit('\n').next().unwrap_or(stripped);
-            return last.to_string();
-        }
-    if is_prefix { format!("{v} ") } else { format!(" {v}") }
+        && let Some(stripped) = v.strip_suffix(n)
+    {
+        // MRTG uses `m/(.*)\Q$nsc\E$/` and `.` does not match a newline,
+        // so for a multi-line prefix/suffix only the last line survives.
+        let last = stripped.rsplit('\n').next().unwrap_or(stripped);
+        return last.to_string();
+    }
+    if is_prefix {
+        format!("{v} ")
+    } else {
+        format!(" {v}")
+    }
 }
 
 fn push_nl(s: &mut String, text: &str) {

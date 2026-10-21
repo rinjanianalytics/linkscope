@@ -61,20 +61,28 @@ fn create_exclusive(path: &Path) -> io::Result<File> {
 /// temporary file to `<base>.log`, then fsyncs the directory.
 pub(crate) fn save_atomic(dir: &Path, base: &str, content: &[u8], sync: bool) -> io::Result<()> {
     if base.len() > crate::MAX_BASE_LEN {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "base name too long"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "base name too long",
+        ));
     }
     // Unpredictable temp name, so another account cannot pre-create it.
     let nonce = {
         use std::sync::atomic::{AtomicU64, Ordering};
         static N: AtomicU64 = AtomicU64::new(0);
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos()).unwrap_or(0);
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
         u64::from(t) ^ N.fetch_add(0x9e37_79b9, Ordering::Relaxed).rotate_left(17)
     };
     let tmp = dir.join(format!("{base}.tmp_{}_{nonce:x}", std::process::id()));
     let log = dir.join(format!("{base}.log"));
     let old = dir.join(format!("{base}.old"));
     let mut f = create_exclusive(&tmp)?;
-    let written = f.write_all(content).and_then(|()| if sync { f.sync_all() } else { Ok(()) });
+    let written = f
+        .write_all(content)
+        .and_then(|()| if sync { f.sync_all() } else { Ok(()) });
     drop(f);
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
@@ -93,9 +101,8 @@ pub(crate) fn save_atomic(dir: &Path, base: &str, content: &[u8], sync: bool) ->
         return Err(e);
     }
     // Make the renames durable; not all platforms can open a directory.
-    if sync
-        && let Ok(d) = File::open(dir) {
-            let _ = d.sync_all();
-        }
+    if sync && let Ok(d) = File::open(dir) {
+        let _ = d.sync_all();
+    }
     Ok(())
 }

@@ -35,8 +35,21 @@ fn compare_one(bin: &Path, name: &str, files: &[(&str, &[u8])], now: i64, mode: 
     for (f, d) in files {
         std::fs::write(cdir.path().join(f), d).unwrap();
     }
-    let u = Upd { now, input: "123456".into(), output: "654321".into(), abs_max: i64::MAX, mode, zero: false };
-    let imgs: Vec<Img> = Period::ALL.iter().map(|&period| Img { period, opts: SummaryOpts::default() }).collect();
+    let u = Upd {
+        now,
+        input: "123456".into(),
+        output: "654321".into(),
+        abs_max: i64::MAX,
+        mode,
+        zero: false,
+    };
+    let imgs: Vec<Img> = Period::ALL
+        .iter()
+        .map(|&period| Img {
+            period,
+            opts: SummaryOpts::default(),
+        })
+        .collect();
     let (ok, printed) = run_c(bin, cdir.path(), "t", now, Some(&u), &[], &imgs);
     let get = |f: &str| files.iter().find(|(n, _)| *n == f).map(|(_, d)| *d);
     let r = RateLog::from_bytes(get("t.log"), get("t.old"), now);
@@ -48,9 +61,18 @@ fn compare_one(bin: &Path, name: &str, files: &[(&str, &[u8])], now: i64, mode: 
             let out = log.update(now, &u.input, &u.output, u.abs_max, mode, false);
             assert_eq!(out, UpdateOutcome::Updated, "{name}");
             let c = std::fs::read(cdir.path().join("t.log")).unwrap();
-            assert!(log.render_bytes() == c, "{name}: {}", first_diff(&log.render_bytes(), &c));
+            assert!(
+                log.render_bytes() == c,
+                "{name}: {}",
+                first_diff(&log.render_bytes(), &c)
+            );
             for (k, im) in imgs.iter().enumerate() {
-                assert_eq!(summary_lines(&log.summarize(now, im.period, &im.opts)), printed[k], "{name} {:?}", im.period);
+                assert_eq!(
+                    summary_lines(&log.summarize(now, im.period, &im.opts)),
+                    printed[k],
+                    "{name} {:?}",
+                    im.period
+                );
             }
         }
     }
@@ -76,7 +98,11 @@ fn damaged_logs_match_c() {
     garbage_mid.insert(340, "1699000000 12 x 4 5");
     let garbage_mid = join(&garbage_mid);
     let mut long_line = lines.clone();
-    let filler = format!("{} 1 2 3 4{}", lines[100].split(' ').next().unwrap(), " 9".repeat(200));
+    let filler = format!(
+        "{} 1 2 3 4{}",
+        lines[100].split(' ').next().unwrap(),
+        " 9".repeat(200)
+    );
     long_line[100] = &filler;
     let long_line = join(&long_line);
     let bad_first = format!("garbage\n{}", lines[1..].join("\n"));
@@ -92,9 +118,25 @@ fn damaged_logs_match_c() {
     };
     let inmax_low = text.replacen(" 0 0 0 0\n", " 900 800 1 2\n", 30);
     let line_only = format!("{} 5 6\n", now - 200);
-    let huge = format!("{}{}", text, (0..3000).map(|i| format!("{} 1 1 1 1\n", 1_000_000_000 - i * 300)).collect::<String>());
-    let long_last = format!("{} {} {}\n{}", now - 300, "7".repeat(250), "8".repeat(10), lines[1..].join("\n"));
-    let overflow = text.replacen(" 0 0 0 0\n", " 99999999999999999999999 -99999999999999999999 1 2\n", 5);
+    let huge = format!(
+        "{}{}",
+        text,
+        (0..3000)
+            .map(|i| format!("{} 1 1 1 1\n", 1_000_000_000 - i * 300))
+            .collect::<String>()
+    );
+    let long_last = format!(
+        "{} {} {}\n{}",
+        now - 300,
+        "7".repeat(250),
+        "8".repeat(10),
+        lines[1..].join("\n")
+    );
+    let overflow = text.replacen(
+        " 0 0 0 0\n",
+        " 99999999999999999999999 -99999999999999999999 1 2\n",
+        5,
+    );
     let neg_time = text.replacen(" 0 0 0 0\n", " 0 0 0 0\n-5 1 1 1 1\n", 1);
     let crlf = text.replace('\n', "\r\n");
 
@@ -102,17 +144,38 @@ fn damaged_logs_match_c() {
         ("missing both", vec![]),
         ("empty log", vec![("t.log", b"")]),
         ("unsorted log, no old", vec![("t.log", unsorted.as_bytes())]),
-        ("unsorted log, good old", vec![("t.log", unsorted.as_bytes()), ("t.old", &good)]),
-        ("unsorted log and old", vec![("t.log", unsorted.as_bytes()), ("t.old", unsorted.as_bytes())]),
-        ("bad first line, good old", vec![("t.log", bad_first.as_bytes()), ("t.old", &good)]),
-        ("bad first line, no old", vec![("t.log", bad_first.as_bytes())]),
-        ("two fields in line 1", vec![("t.log", two_fields.as_bytes())]),
+        (
+            "unsorted log, good old",
+            vec![("t.log", unsorted.as_bytes()), ("t.old", &good)],
+        ),
+        (
+            "unsorted log and old",
+            vec![
+                ("t.log", unsorted.as_bytes()),
+                ("t.old", unsorted.as_bytes()),
+            ],
+        ),
+        (
+            "bad first line, good old",
+            vec![("t.log", bad_first.as_bytes()), ("t.old", &good)],
+        ),
+        (
+            "bad first line, no old",
+            vec![("t.log", bad_first.as_bytes())],
+        ),
+        (
+            "two fields in line 1",
+            vec![("t.log", two_fields.as_bytes())],
+        ),
         ("garbage lines", vec![("t.log", garbage_mid.as_bytes())]),
         ("long line", vec![("t.log", long_line.as_bytes())]),
         ("three columns", vec![("t.log", three_col.as_bytes())]),
         ("inmax below avg", vec![("t.log", inmax_low.as_bytes())]),
         ("line 1 only", vec![("t.log", line_only.as_bytes())]),
-        ("more than MAX_HISTORY lines", vec![("t.log", huge.as_bytes())]),
+        (
+            "more than MAX_HISTORY lines",
+            vec![("t.log", huge.as_bytes())],
+        ),
         ("250 char last value", vec![("t.log", long_last.as_bytes())]),
         ("overflowing numbers", vec![("t.log", overflow.as_bytes())]),
         ("negative time", vec![("t.log", neg_time.as_bytes())]),
@@ -122,7 +185,13 @@ fn damaged_logs_match_c() {
     if let Ok(l) = std::fs::read(LAB_LOG) {
         lab = l;
         let files: Vec<(&str, &[u8])> = vec![("t.log", b"x\n1 2 3 4 5\n"), ("t.old", &lab)];
-        compare_one(&bin, "bad log, lab old (stale tail)", &files, 1_760_006_500, Mode::Counter);
+        compare_one(
+            &bin,
+            "bad log, lab old (stale tail)",
+            &files,
+            1_760_006_500,
+            Mode::Counter,
+        );
     }
     for (name, files) in &cases {
         for mode in [Mode::Counter, Mode::Gauge] {
@@ -139,7 +208,14 @@ fn mutated_logs_match_c() {
     let Some(bin) = rateup() else { return };
     let good = sample_log();
     let now = 1_700_000_000 + 40 * 310 + 300;
-    let first_two = good.iter().enumerate().filter(|(_, b)| **b == b'\n').nth(1).unwrap().0 + 1;
+    let first_two = good
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| **b == b'\n')
+        .nth(1)
+        .unwrap()
+        .0
+        + 1;
     let iters = env_num("MRTG_RATE_MUTATIONS", 150);
     for seed in 0..iters {
         let mut rng = Rng::new(seed + 1000);
@@ -167,19 +243,33 @@ fn mutated_logs_match_c() {
         if with_old {
             files.push(("t.old", &good));
         }
-        compare_one(&bin, &format!("mutation seed {seed}"), &files, now, Mode::Counter);
+        compare_one(
+            &bin,
+            &format!("mutation seed {seed}"),
+            &files,
+            now,
+            Mode::Counter,
+        );
     }
 }
 
 #[test]
 fn random_bytes_never_panic() {
     let good = sample_log();
-    let opts = SummaryOpts { maxx: 60, bits: true, peak: true, dorelpercent: true, ..SummaryOpts::default() };
+    let opts = SummaryOpts {
+        maxx: 60,
+        bits: true,
+        peak: true,
+        dorelpercent: true,
+        ..SummaryOpts::default()
+    };
     for seed in 0..300u64 {
         let mut rng = Rng::new(seed);
         let data: Vec<u8> = match seed % 3 {
             0 => (0..rng.below(5000)).map(|_| rng.next_u64() as u8).collect(),
-            1 => (0..rng.below(5000)).map(|_| rng.pick(b"0123456789 \n\t-+.\0ex")).collect(),
+            1 => (0..rng.below(5000))
+                .map(|_| rng.pick(b"0123456789 \n\t-+.\0ex"))
+                .collect(),
             _ => {
                 let mut d = good.clone();
                 for _ in 0..20 {
@@ -189,15 +279,38 @@ fn random_bytes_never_panic() {
                 d
             }
         };
-        let now = rng.pick(&[0i64, -1, 1_700_020_000, i64::MAX, i64::MIN, i64::MAX / 2, i64::MIN / 2]);
-        let Ok(mut log) = RateLog::from_bytes(Some(&data), Some(&data), now) else { continue };
+        let now = rng.pick(&[
+            0i64,
+            -1,
+            1_700_020_000,
+            i64::MAX,
+            i64::MIN,
+            i64::MAX / 2,
+            i64::MIN / 2,
+        ]);
+        let Ok(mut log) = RateLog::from_bytes(Some(&data), Some(&data), now) else {
+            continue;
+        };
         let _ = log.render();
         for p in Period::ALL {
             let _ = log.summarize(now, p, &opts);
         }
-        for mode in [Mode::Counter, Mode::Absolute, Mode::Gauge, Mode::PerHour, Mode::PerMinute] {
+        for mode in [
+            Mode::Counter,
+            Mode::Absolute,
+            Mode::Gauge,
+            Mode::PerHour,
+            Mode::PerMinute,
+        ] {
             let t = now.wrapping_add(rng.below(4000) as i64);
-            let _ = log.update(t, "18446744073709551616000", "-1", rng.next_u64() as i64, mode, rng.chance(50));
+            let _ = log.update(
+                t,
+                "18446744073709551616000",
+                "-1",
+                rng.next_u64() as i64,
+                mode,
+                rng.chance(50),
+            );
             let _ = log.render();
             let _ = log.summarize(t, Period::Year, &opts);
         }
@@ -208,20 +321,44 @@ fn random_bytes_never_panic() {
 fn absurd_inputs_are_rejected_or_handled() {
     let mut log = RateLog::fresh(1_700_000_000);
     let long = "1".repeat(200);
-    assert_eq!(log.update(1_700_000_300, &long, "1", 10, Mode::Counter, false), UpdateOutcome::Rejected(InputError::TooLong));
-    assert_eq!(log.update(1_700_000_300, "", "1", 10, Mode::Counter, false), UpdateOutcome::Rejected(InputError::Empty));
-    assert_eq!(log.update(1_700_000_300, "1 2", "1", 10, Mode::Counter, false), UpdateOutcome::Rejected(InputError::BadChar));
-    assert_eq!(log.update(1_700_000_300, "1\x002", "1", 10, Mode::Counter, false), UpdateOutcome::Rejected(InputError::BadChar));
+    assert_eq!(
+        log.update(1_700_000_300, &long, "1", 10, Mode::Counter, false),
+        UpdateOutcome::Rejected(InputError::TooLong)
+    );
+    assert_eq!(
+        log.update(1_700_000_300, "", "1", 10, Mode::Counter, false),
+        UpdateOutcome::Rejected(InputError::Empty)
+    );
+    assert_eq!(
+        log.update(1_700_000_300, "1 2", "1", 10, Mode::Counter, false),
+        UpdateOutcome::Rejected(InputError::BadChar)
+    );
+    assert_eq!(
+        log.update(1_700_000_300, "1\x002", "1", 10, Mode::Counter, false),
+        UpdateOutcome::Rejected(InputError::BadChar)
+    );
     // Strange first update: no diff happens, so a digit-less value is fine
     // (rateup writes it), but the next update would diff it.
-    assert_eq!(log.update(1_700_000_300, "abc", "5", 10, Mode::Counter, false), UpdateOutcome::Updated);
-    assert_eq!(log.update(1_700_000_600, "7", "9", 10, Mode::Counter, false), UpdateOutcome::Rejected(InputError::NoDigits));
+    assert_eq!(
+        log.update(1_700_000_300, "abc", "5", 10, Mode::Counter, false),
+        UpdateOutcome::Updated
+    );
+    assert_eq!(
+        log.update(1_700_000_600, "7", "9", 10, Mode::Counter, false),
+        UpdateOutcome::Rejected(InputError::NoDigits)
+    );
     assert_eq!(log.last_raw(), ("abc", "5"));
     let ok198 = "9".repeat(198);
-    assert_eq!(log.update(1_700_000_600, &ok198, "9", 10, Mode::Gauge, false), UpdateOutcome::Rejected(InputError::TooLongForDiff));
+    assert_eq!(
+        log.update(1_700_000_600, &ok198, "9", 10, Mode::Gauge, false),
+        UpdateOutcome::Rejected(InputError::TooLongForDiff)
+    );
     // A 197-digit gauge does not fit in i64: becomes the previous rate.
     let ok197 = "9".repeat(197);
-    assert_eq!(log.update(1_700_000_600, &ok197, "9", i64::MAX, Mode::Gauge, false), UpdateOutcome::Updated);
+    assert_eq!(
+        log.update(1_700_000_600, &ok197, "9", i64::MAX, Mode::Gauge, false),
+        UpdateOutcome::Updated
+    );
     // Extreme timestamps must not panic.
     for t in [i64::MAX, i64::MAX - 1] {
         let mut l = RateLog::fresh(t);
@@ -232,7 +369,14 @@ fn absurd_inputs_are_rejected_or_handled() {
     let mut l = RateLog::fresh(i64::MIN);
     let _ = l.update(i64::MIN, "1", "1", i64::MAX, Mode::Counter, true);
     let _ = l.update(i64::MAX, "1", "1", i64::MAX, Mode::Counter, true);
-    let _ = l.summarize(i64::MIN, Period::Year, &SummaryOpts { maxx: 10_000, ..SummaryOpts::default() });
+    let _ = l.summarize(
+        i64::MIN,
+        Period::Year,
+        &SummaryOpts {
+            maxx: 10_000,
+            ..SummaryOpts::default()
+        },
+    );
     assert!(RateLog::load(Path::new("/nonexistent"), &"x".repeat(121), 0).is_err());
 }
 
@@ -268,8 +412,18 @@ fn save_is_atomic_and_never_follows_symlinks() {
     symlink(&victim, p.join("t.log")).unwrap();
     log.save(p, "t").unwrap();
     assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
-    assert!(std::fs::symlink_metadata(p.join("t.old")).unwrap().file_type().is_symlink());
-    assert!(std::fs::symlink_metadata(p.join("t.log")).unwrap().file_type().is_file());
+    assert!(
+        std::fs::symlink_metadata(p.join("t.old"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(
+        std::fs::symlink_metadata(p.join("t.log"))
+            .unwrap()
+            .file_type()
+            .is_file()
+    );
 }
 
 #[cfg(unix)]
@@ -280,7 +434,11 @@ fn fifo_or_symlinked_log_is_not_read() {
     std::fs::create_dir_all(&dir).unwrap();
     let fifo = dir.join("f.log");
     let _ = std::fs::remove_file(&fifo);
-    let ok = std::process::Command::new("mkfifo").arg(&fifo).status().map(|s| s.success()).unwrap_or(false);
+    let ok = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
     if ok {
         // Must return promptly (fresh log) instead of blocking on the FIFO.
         let t = std::time::Instant::now();
@@ -293,7 +451,11 @@ fn fifo_or_symlinked_log_is_not_read() {
     let _ = std::fs::remove_file(dir.join("s.log"));
     std::os::unix::fs::symlink(&real, dir.join("s.log")).unwrap();
     let l = RateLog::load(&dir, "s", 1_700_000_100).unwrap();
-    assert_ne!(l.last_raw(), ("5", "5"), "symlinked log must not be followed");
+    assert_ne!(
+        l.last_raw(),
+        ("5", "5"),
+        "symlinked log must not be followed"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

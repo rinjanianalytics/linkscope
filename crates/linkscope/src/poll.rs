@@ -57,7 +57,10 @@ pub struct Poller {
 }
 
 pub fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// MRTG's final sanity check on in/out values (note the unescaped `.`,
@@ -81,7 +84,11 @@ pub const MAX_DEVICE_TEXT: usize = 256;
 /// [`MAX_DEVICE_TEXT`] characters.
 fn device_text(v: &str) -> String {
     let c = clean(v);
-    if c.chars().count() <= MAX_DEVICE_TEXT { c } else { c.chars().take(MAX_DEVICE_TEXT).collect() }
+    if c.chars().count() <= MAX_DEVICE_TEXT {
+        c
+    } else {
+        c.chars().take(MAX_DEVICE_TEXT).collect()
+    }
 }
 
 impl Poller {
@@ -99,8 +106,15 @@ impl Poller {
             match src {
                 Source::Snmp(s) => match Endpoint::from_source(s, self.cfg.global.single_request) {
                     Ok(ep) => {
-                        let key = format!("{}@{}{}|{}|{:?}", s.community, s.host, s.snmp_info, s.ipv4only, s.snmp_options);
-                        groups.entry(key).or_insert_with(|| (ep, Vec::new())).1.push((i, s.clone()));
+                        let key = format!(
+                            "{}@{}{}|{}|{:?}",
+                            s.community, s.host, s.snmp_info, s.ipv4only, s.snmp_options
+                        );
+                        groups
+                            .entry(key)
+                            .or_insert_with(|| (ep, Vec::new()))
+                            .1
+                            .push((i, s.clone()));
                     }
                     Err(e) => results[i].error = Some(e),
                 },
@@ -112,7 +126,10 @@ impl Poller {
                     let timeout = self.exec_timeout;
                     set.spawn(async move {
                         let _p = sem.acquire_owned().await;
-                        vec![(i, run_external(&cmd, shell, path_add.as_deref(), timeout).await)]
+                        vec![(
+                            i,
+                            run_external(&cmd, shell, path_add.as_deref(), timeout).await,
+                        )]
                     });
                 }
             }
@@ -133,9 +150,26 @@ impl Poller {
                 match tokio::time::timeout(budget, ctx.poll_group(ep, members)).await {
                     Ok(r) => r,
                     Err(_) => {
-                        tracing::warn!("{who} did not finish within {} s; its targets are unknown this cycle", budget.as_secs());
-                        let msg = format!("{who} took longer than {} s (skipped this cycle)", budget.as_secs());
-                        ids.into_iter().map(|i| (i, SourceResult { error: Some(msg.clone()), time: now(), ..Default::default() })).collect()
+                        tracing::warn!(
+                            "{who} did not finish within {} s; its targets are unknown this cycle",
+                            budget.as_secs()
+                        );
+                        let msg = format!(
+                            "{who} took longer than {} s (skipped this cycle)",
+                            budget.as_secs()
+                        );
+                        ids.into_iter()
+                            .map(|i| {
+                                (
+                                    i,
+                                    SourceResult {
+                                        error: Some(msg.clone()),
+                                        time: now(),
+                                        ..Default::default()
+                                    },
+                                )
+                            })
+                            .collect()
                     }
                 }
             });
@@ -183,9 +217,25 @@ fn host_key(s: &SnmpSource) -> String {
 }
 
 impl GroupCtx {
-    async fn poll_group(&self, ep: Endpoint, members: Vec<(usize, SnmpSource)>) -> Vec<(usize, SourceResult)> {
+    async fn poll_group(
+        &self,
+        ep: Endpoint,
+        members: Vec<(usize, SnmpSource)>,
+    ) -> Vec<(usize, SourceResult)> {
         let fail = |members: &[(usize, SnmpSource)], msg: String| -> Vec<(usize, SourceResult)> {
-            members.iter().map(|(i, _)| (*i, SourceResult { error: Some(msg.clone()), time: now(), ..Default::default() })).collect()
+            members
+                .iter()
+                .map(|(i, _)| {
+                    (
+                        *i,
+                        SourceResult {
+                            error: Some(msg.clone()),
+                            time: now(),
+                            ..Default::default()
+                        },
+                    )
+                })
+                .collect()
         };
         let session = match self.pool.session(&ep).await {
             Ok(s) => s,
@@ -206,7 +256,10 @@ impl GroupCtx {
             }
             // Resolve interface numbers, scanning the agent's tables once if needed.
             let needs_scan = todo.iter().any(|(_, s)| {
-                (0..2).any(|d| !matches!(s.sel[d], IfSel::If(_) | IfSel::None) && self.lookup(&hk, &s.sel[d]).is_none())
+                (0..2).any(|d| {
+                    !matches!(s.sel[d], IfSel::If(_) | IfSel::None)
+                        && self.lookup(&hk, &s.sel[d]).is_none()
+                })
             });
             if needs_scan && !populated {
                 populated = true;
@@ -218,7 +271,14 @@ impl GroupCtx {
             for (i, s) in &todo {
                 match self.plan(*i, s, &hk) {
                     Prep::Ready(p) => plans.push(p),
-                    Prep::Failed(i, msg) => out.push((i, SourceResult { error: Some(msg), time: now(), ..Default::default() })),
+                    Prep::Failed(i, msg) => out.push((
+                        i,
+                        SourceResult {
+                            error: Some(msg),
+                            time: now(),
+                            ..Default::default()
+                        },
+                    )),
                 }
             }
             if plans.is_empty() {
@@ -242,7 +302,11 @@ impl GroupCtx {
             }
             let mut slots = Vec::with_capacity(plans.len());
             for p in &plans {
-                let mut s = Slots { x: [None, None], d: [None, None], pseudo: [None, None] };
+                let mut s = Slots {
+                    x: [None, None],
+                    d: [None, None],
+                    pseudo: [None, None],
+                };
                 for d in 0..2 {
                     if let Some(x) = &p.xcheck[d] {
                         s.x[d] = Some(slot(x, &mut oids));
@@ -263,11 +327,20 @@ impl GroupCtx {
                 Ok(v) => v,
                 Err(e) => {
                     let msg = match &e {
-                        SnmpError::Timeout(_) => format!("no response from {} (skipping this cycle)", ep.display()),
+                        SnmpError::Timeout(_) => {
+                            format!("no response from {} (skipping this cycle)", ep.display())
+                        }
                         other => other.to_string(),
                     };
                     for p in &plans {
-                        out.push((p.idx, SourceResult { error: Some(msg.clone()), time: now(), ..Default::default() }));
+                        out.push((
+                            p.idx,
+                            SourceResult {
+                                error: Some(msg.clone()),
+                                time: now(),
+                                ..Default::default()
+                            },
+                        ));
                     }
                     return out;
                 }
@@ -292,15 +365,28 @@ impl GroupCtx {
                 if let Some(d) = mismatch {
                     if round == 0 && retried.insert(p.idx) {
                         // Forget the stale mapping and rescan once.
-                        self.cache.lock().unwrap_or_else(|e| e.into_inner()).store(&hk, p.src.sel[d].method(), p.src.sel[d].key(), None);
+                        self.cache.lock().unwrap_or_else(|e| e.into_inner()).store(
+                            &hk,
+                            p.src.sel[d].method(),
+                            p.src.sel[d].key(),
+                            None,
+                        );
                         populated = false;
                         next_todo.push((p.idx, p.src));
                     } else {
-                        out.push((p.idx, SourceResult {
-                            error: Some(format!("could not match {} '{}' on {}", p.src.sel[d].method(), p.src.sel[d].key(), ep.display())),
-                            time,
-                            ..Default::default()
-                        }));
+                        out.push((
+                            p.idx,
+                            SourceResult {
+                                error: Some(format!(
+                                    "could not match {} '{}' on {}",
+                                    p.src.sel[d].method(),
+                                    p.src.sel[d].key(),
+                                    ep.display()
+                                )),
+                                time,
+                                ..Default::default()
+                            },
+                        ));
                     }
                     continue;
                 }
@@ -314,13 +400,29 @@ impl GroupCtx {
                     io[d] = raw.map(|v| clean(&v)).filter(|v| numeric_ok(v));
                 }
                 let error = if io[0].is_none() || io[1].is_none() {
-                    Some(format!("no value for {} or {} on {}", p.data[0], p.data[1], ep.display()))
+                    Some(format!(
+                        "no value for {} or {} on {}",
+                        p.data[0],
+                        p.data[1],
+                        ep.display()
+                    ))
                 } else {
                     None
                 };
                 let [input, output] = io;
                 let if_index = [0, 1].map(|d| p.ifnum[d].strip_prefix('.').map(str::to_string));
-                out.push((p.idx, SourceResult { input, output, time, uptime: uptime.clone(), name: name.clone(), error, if_index }));
+                out.push((
+                    p.idx,
+                    SourceResult {
+                        input,
+                        output,
+                        time,
+                        uptime: uptime.clone(),
+                        name: name.clone(),
+                        error,
+                        if_index,
+                    },
+                ));
             }
             todo = next_todo;
         }
@@ -329,7 +431,8 @@ impl GroupCtx {
 
     fn lookup(&self, hk: &str, sel: &IfSel) -> Option<String> {
         let c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        c.read(hk, sel.method(), trim_ctl(sel.key())).map(str::to_string)
+        c.read(hk, sel.method(), trim_ctl(sel.key()))
+            .map(str::to_string)
     }
 
     fn plan(&self, idx: usize, s: &SnmpSource, hk: &str) -> Prep {
@@ -341,13 +444,29 @@ impl GroupCtx {
                 sel => match self.lookup(hk, sel) {
                     Some(v) => format!(".{v}"),
                     None => {
-                        return Prep::Failed(idx, format!("could not match host '{}' ref '{}' key '{}'", s.host, sel.method(), sel.key()));
+                        return Prep::Failed(
+                            idx,
+                            format!(
+                                "could not match host '{}' ref '{}' key '{}'",
+                                s.host,
+                                sel.method(),
+                                sel.key()
+                            ),
+                        );
                     }
                 },
             };
-            let ok = ifnum[d].is_empty() || (ifnum[d].len() > 1 && ifnum[d][1..].bytes().all(|b| b.is_ascii_digit()));
+            let ok = ifnum[d].is_empty()
+                || (ifnum[d].len() > 1 && ifnum[d][1..].bytes().all(|b| b.is_ascii_digit()));
             if !ok {
-                return Prep::Failed(idx, format!("cannot determine ifIndex for '{}' (cache says {})", s.sel[d].key(), &ifnum[d][1..]));
+                return Prep::Failed(
+                    idx,
+                    format!(
+                        "cannot determine ifIndex for '{}' (cache says {})",
+                        s.sel[d].key(),
+                        &ifnum[d][1..]
+                    ),
+                );
             }
         }
         let xcheck = [0, 1].map(|d| match &s.sel[d] {
@@ -359,14 +478,25 @@ impl GroupCtx {
             _ => None,
         });
         let data = [0, 1].map(|d| format!("{}{}", s.oid[d], ifnum[d]));
-        Prep::Ready(Plan { idx, src: s.clone(), ifnum, xcheck, data })
+        Prep::Ready(Plan {
+            idx,
+            src: s.clone(),
+            ifnum,
+            xcheck,
+            data,
+        })
     }
 
     /// `populateconfcache`: walk ifName, ifDescr, ifType, ipAdEntIfIndex and
     /// ifPhysAddress and record which ifIndex each value maps to.
     async fn populate(&self, sess: &mut crate::snmp::Session, hk: &str) -> Result<(), SnmpError> {
         let who = sess.endpoint().display();
-        if self.cache.lock().unwrap_or_else(|e| e.into_inner()).is_dead(hk) {
+        if self
+            .cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_dead(hk)
+        {
             return Err(SnmpError::Timeout(who));
         }
         // Each walk stops at the rows the cache keeps and becomes cache entries at once (keys cut
@@ -374,25 +504,43 @@ impl GroupCtx {
         // huge walks, nor grow the `.ok` file without bound.
         let mut rows: Vec<(&str, String, String)> = Vec::new();
         let mut budget = HostBudget::default();
-        for (node, method) in [("ifName", "Name"), ("ifDescr", "Descr"), ("ifType", "Type"), ("ipAdEntIfIndex", "Ip")] {
+        for (node, method) in [
+            ("ifName", "Name"),
+            ("ifDescr", "Descr"),
+            ("ifType", "Type"),
+            ("ipAdEntIfIndex", "Ip"),
+        ] {
             let base = self.oids.resolve(node).expect("built-in OID");
             match sess.walk_first(&base, MAX_CACHE_ROWS).await {
                 Ok(walked) => {
                     for (suffix, v) in walked {
-                        let (key, value) = if method == "Ip" { (suffix, v.pretty()) } else { (cache_key(&v.pretty()), suffix) };
+                        let (key, value) = if method == "Ip" {
+                            (suffix, v.pretty())
+                        } else {
+                            (cache_key(&v.pretty()), suffix)
+                        };
                         if budget.take(&key, &value) {
                             rows.push((method, key, value));
                         }
                     }
                 }
                 Err(SnmpError::Timeout(t)) => {
-                    self.cache.lock().unwrap_or_else(|e| e.into_inner()).mark_dead(hk);
+                    self.cache
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .mark_dead(hk);
                     return Err(SnmpError::Timeout(t));
                 }
                 Err(e) => tracing::debug!("skipping {node} scan on {who}: {e}"),
             }
         }
-        let eth = sess.walk_first(&self.oids.resolve("ifPhysAddress").expect("built-in OID"), MAX_CACHE_ROWS).await.unwrap_or_default();
+        let eth = sess
+            .walk_first(
+                &self.oids.resolve("ifPhysAddress").expect("built-in OID"),
+                MAX_CACHE_ROWS,
+            )
+            .await
+            .unwrap_or_default();
         for (suffix, v) in eth {
             let bytes = match &v {
                 Val::Str(b) | Val::Opaque(b) => b.clone(),
@@ -404,7 +552,9 @@ impl GroupCtx {
             }
         }
         if budget.full {
-            tracing::warn!("{who} reports more interface data than LinkScope caches ({MAX_HOST_CACHE_BYTES} bytes); interfaces past that are matched by ifIndex only");
+            tracing::warn!(
+                "{who} reports more interface data than LinkScope caches ({MAX_HOST_CACHE_BYTES} bytes); interfaces past that are matched by ifIndex only"
+            );
         }
         let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         c.clear_host(hk);
@@ -442,7 +592,11 @@ impl HostBudget {
 
 /// A device string as a cache key: control characters as spaces, at most MAX_KEY_CHARS.
 fn cache_key(v: &str) -> String {
-    trim_ctl(v).chars().take(MAX_KEY_CHARS).map(|ch| if ch <= ' ' { ' ' } else { ch }).collect()
+    trim_ctl(v)
+        .chars()
+        .take(MAX_KEY_CHARS)
+        .map(|ch| if ch <= ' ' { ' ' } else { ch })
+        .collect()
 }
 /// Longest ifDescr/ifName kept as a cache key.
 const MAX_KEY_CHARS: usize = 256;
@@ -453,7 +607,11 @@ const MAX_KEY_CHARS: usize = 256;
 fn data_value(v: &Val, oid_spec: &str) -> String {
     if oid_spec.starts_with("ifAdminHack") || oid_spec.starts_with("ifOperHack") {
         // MRTG compares numerically (`== 1`).
-        return if v.number().and_then(|n| n.parse::<f64>().ok()) == Some(1.0) { "1".into() } else { "0".into() };
+        return if v.number().and_then(|n| n.parse::<f64>().ok()) == Some(1.0) {
+            "1".into()
+        } else {
+            "0".into()
+        };
     }
     match v {
         Val::TimeTicks(t) => t.to_string(),
@@ -468,9 +626,14 @@ fn crosscheck_ok(sel: &IfSel, ifnum: &str, got: Option<&Val>) -> bool {
             Some(Val::Str(b)) | Some(Val::Opaque(b)) => mac_string(b) == *k,
             _ => false,
         },
-        IfSel::Ip(_) => got.filter(|v| v.is_present()).is_some_and(|v| format!(".{}", v.pretty()) == ifnum),
+        IfSel::Ip(_) => got
+            .filter(|v| v.is_present())
+            .is_some_and(|v| format!(".{}", v.pretty()) == ifnum),
         IfSel::Descr(k) | IfSel::Name(k) | IfSel::Type(k) => {
-            let s = got.filter(|v| v.is_present()).map(|v| v.pretty()).unwrap_or_else(|| "Empty".into());
+            let s = got
+                .filter(|v| v.is_present())
+                .map(|v| v.pretty())
+                .unwrap_or_else(|| "Empty".into());
             trim_ctl(&s) == k.as_str()
         }
         _ => true,
@@ -515,15 +678,21 @@ impl Pseudo {
             let idx = c[1].to_string();
             let mut s = spec.replacen("IndexPOS", &idx, 1);
             if let Some(p) = s.rfind('.')
-                && s[p + 1..].bytes().all(|b| b.is_ascii_digit()) {
-                    s.truncate(p);
-                }
+                && s[p + 1..].bytes().all(|b| b.is_ascii_digit())
+            {
+                s.truncate(p);
+            }
             return Some(Pseudo::IndexPos(s));
         }
         None
     }
 
-    async fn eval(&self, sess: &mut crate::snmp::Session, oids: &OidResolver, _ifnum: &str) -> Option<String> {
+    async fn eval(
+        &self,
+        sess: &mut crate::snmp::Session,
+        oids: &OidResolver,
+        _ifnum: &str,
+    ) -> Option<String> {
         match self {
             Pseudo::Zero => Some("0".into()),
             Pseudo::One => Some("1".into()),
@@ -531,11 +700,24 @@ impl Pseudo {
                 let rows = sess.walk(&oids.resolve(o)?).await.ok()?;
                 rows.get(*n).map(|(_, v)| v.pretty())
             }
-            Pseudo::GetNext(o) => sess.get_next(&oids.resolve(o)?).await.ok()?.map(|(_, v)| v.pretty()),
-            Pseudo::CountWalk(o) => Some(sess.walk(&oids.resolve(o)?).await.map(|r| r.len()).unwrap_or(0).to_string()),
+            Pseudo::GetNext(o) => sess
+                .get_next(&oids.resolve(o)?)
+                .await
+                .ok()?
+                .map(|(_, v)| v.pretty()),
+            Pseudo::CountWalk(o) => Some(
+                sess.walk(&oids.resolve(o)?)
+                    .await
+                    .map(|r| r.len())
+                    .unwrap_or(0)
+                    .to_string(),
+            ),
             Pseudo::IndexPos(o) => {
                 let v = sess.get(&[oids.resolve(o)?]).await.ok()?;
-                v.into_iter().next().filter(|v| v.is_present()).map(|v| v.pretty())
+                v.into_iter()
+                    .next()
+                    .filter(|v| v.is_present())
+                    .map(|v| v.pretty())
             }
         }
     }
@@ -561,12 +743,24 @@ fn path_with(add: &str, path: Option<&str>) -> String {
 /// command runs in its own process group, so a timeout also stops anything
 /// it started. Messages name the program only, never its arguments, which
 /// may contain credentials.
-pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, timeout: Duration) -> SourceResult {
+pub async fn run_external(
+    cmd: &str,
+    allow_shell: bool,
+    path_add: Option<&str>,
+    timeout: Duration,
+) -> SourceResult {
     let prog = crate::cycle::program_name(cmd);
-    let mut res = SourceResult { time: now(), uptime: Some("unknown".into()), name: Some("unknown".into()), ..Default::default() };
+    let mut res = SourceResult {
+        time: now(),
+        uptime: Some("unknown".into()),
+        name: Some("unknown".into()),
+        ..Default::default()
+    };
     let mut command = if linkscope_config::check::needs_shell(cmd) {
         if !allow_shell {
-            res.error = Some(format!("external command ({prog}) needs a shell; set ExecShell: yes or wrap it in a script"));
+            res.error = Some(format!(
+                "external command ({prog}) needs a shell; set ExecShell: yes or wrap it in a script"
+            ));
             return res;
         }
         let mut c = tokio::process::Command::new("/bin/sh");
@@ -587,7 +781,12 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
     if let Some(p) = path_add {
         command.env("PATH", path_with(p, std::env::var("PATH").ok().as_deref()));
     }
-    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit()).kill_on_drop(true).process_group(0);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .process_group(0);
     let mut child = match command.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -627,7 +826,10 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
         Err(_) => {
             kill_group();
             let _ = child.wait().await;
-            res.error = Some(format!("external command ({prog}) did not finish within {}s", timeout.as_secs()));
+            res.error = Some(format!(
+                "external command ({prog}) did not finish within {}s",
+                timeout.as_secs()
+            ));
             return res;
         }
     };
@@ -650,7 +852,9 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
     let num = |label: &str, l: Option<&str>, res: &mut SourceResult| -> Option<String> {
         match l {
             None => {
-                res.error = Some(format!("{prog}: expected a number for '{label}' but got nothing"));
+                res.error = Some(format!(
+                    "{prog}: expected a number for '{label}' but got nothing"
+                ));
                 None
             }
             Some("UNKNOWN") => None,
@@ -690,7 +894,10 @@ mod tests {
 
     #[test]
     fn path_add_never_adds_the_current_directory() {
-        assert_eq!(path_with("/opt/probe/", Some("/usr/bin:/bin")), "/opt/probe:/usr/bin:/bin");
+        assert_eq!(
+            path_with("/opt/probe/", Some("/usr/bin:/bin")),
+            "/opt/probe:/usr/bin:/bin"
+        );
         // With PATH unset or empty, `dir:` would end in an empty entry: the current directory.
         assert_eq!(path_with("/opt/probe", None), "/opt/probe");
         assert_eq!(path_with("/opt/probe", Some("")), "/opt/probe");
@@ -717,12 +924,29 @@ mod tests {
     async fn an_exec_target_leaves_no_process_behind() {
         let dir = tempfile::tempdir().unwrap();
         let pidfile = dir.path().join("pid");
-        let cmd = format!("sleep 30 >/dev/null 2>&1 & echo $! > {}; printf '1\\n2\\nup\\nname\\n'", pidfile.display());
+        let cmd = format!(
+            "sleep 30 >/dev/null 2>&1 & echo $! > {}; printf '1\\n2\\nup\\nname\\n'",
+            pidfile.display()
+        );
         let r = run_external(&cmd, true, None, Duration::from_secs(10)).await;
-        assert_eq!((r.input.as_deref(), r.output.as_deref()), (Some("1"), Some("2")), "{r:?}");
-        let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        assert_eq!(
+            (r.input.as_deref(), r.output.as_deref()),
+            (Some("1"), Some("2")),
+            "{r:?}"
+        );
+        let pid: i32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         // Gone, or a zombie waiting for init to reap it: either way no longer running.
-        let running = || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|st| st.rsplit(')').next().is_some_and(|rest| !rest.trim_start().starts_with('Z')));
+        let running = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|st| {
+                st.rsplit(')')
+                    .next()
+                    .is_some_and(|rest| !rest.trim_start().starts_with('Z'))
+            })
+        };
         let started = std::time::Instant::now();
         while running() && started.elapsed() < Duration::from_secs(3) {
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -732,12 +956,24 @@ mod tests {
 
     #[tokio::test]
     async fn external_parsing() {
-        let r = run_external("/usr/bin/printf '12\\n 34 apples\\nup 3 days\\n  myhost\\n'", false, None, Duration::from_secs(5)).await;
+        let r = run_external(
+            "/usr/bin/printf '12\\n 34 apples\\nup 3 days\\n  myhost\\n'",
+            false,
+            None,
+            Duration::from_secs(5),
+        )
+        .await;
         assert_eq!(r.input.as_deref(), Some("12"));
         assert_eq!(r.output.as_deref(), Some("34"));
         assert_eq!(r.uptime.as_deref(), Some("up 3 days"));
         assert_eq!(r.name.as_deref(), Some("myhost"));
-        let r = run_external("/usr/bin/printf 'UNKNOWN\\n5\\n'", false, None, Duration::from_secs(5)).await;
+        let r = run_external(
+            "/usr/bin/printf 'UNKNOWN\\n5\\n'",
+            false,
+            None,
+            Duration::from_secs(5),
+        )
+        .await;
         assert_eq!(r.input, None);
         assert_eq!(r.output.as_deref(), Some("5"));
         assert_eq!(r.uptime.as_deref(), Some("unknown"));
@@ -749,14 +985,32 @@ mod tests {
         assert!(r.error.unwrap().contains("needs a shell"));
         // Long output: the four lines MRTG reads are enough, no timeout.
         let t = std::time::Instant::now();
-        let r = run_external("printf '1\n2\nup\nname\n'; yes 1234567890", true, None, Duration::from_secs(20)).await;
-        assert_eq!((r.input.as_deref(), r.output.as_deref()), (Some("1"), Some("2")));
+        let r = run_external(
+            "printf '1\n2\nup\nname\n'; yes 1234567890",
+            true,
+            None,
+            Duration::from_secs(20),
+        )
+        .await;
+        assert_eq!(
+            (r.input.as_deref(), r.output.as_deref()),
+            (Some("1"), Some("2"))
+        );
         assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
         // Arguments never appear in messages.
-        let r = run_external("/nonexistent/prog --password=s3cret", false, None, Duration::from_secs(5)).await;
+        let r = run_external(
+            "/nonexistent/prog --password=s3cret",
+            false,
+            None,
+            Duration::from_secs(5),
+        )
+        .await;
         assert!(!r.error.unwrap().contains("s3cret"));
         let r = run_external("echo 1; echo 2", true, None, Duration::from_secs(5)).await;
-        assert_eq!((r.input.as_deref(), r.output.as_deref()), (Some("1"), Some("2")));
+        assert_eq!(
+            (r.input.as_deref(), r.output.as_deref()),
+            (Some("1"), Some("2"))
+        );
         let r = run_external("/bin/sleep 5", false, None, Duration::from_millis(200)).await;
         assert!(r.error.unwrap().contains("did not finish"));
     }
@@ -764,7 +1018,9 @@ mod tests {
     #[test]
     fn pseudo_parsing() {
         assert!(matches!(Pseudo::parse("PseudoZero"), Some(Pseudo::Zero)));
-        assert!(matches!(Pseudo::parse("WaLK2ifDescr"), Some(Pseudo::Walk(2, ref o)) if o == "ifDescr"));
+        assert!(
+            matches!(Pseudo::parse("WaLK2ifDescr"), Some(Pseudo::Walk(2, ref o)) if o == "ifDescr")
+        );
         assert!(Pseudo::parse("ifInOctets.3").is_none());
     }
 }
