@@ -29,12 +29,28 @@ MRTG.
 Program ambang dijalankan langsung, tanpa shell, dengan `SetEnv[]` target dan `THRESH_DESC` di
 lingkungannya. Argumennya sama dengan MRTG: nama target, batas seperti dikonfigurasi, nilai saat
 ini, dan, saat terlampaui, deskripsinya (`No Description` bila tidak ada). Program yang berjalan
-lebih dari 60 detik dihentikan.
+lebih dari 60 detik dihentikan, bersama semua yang dijalankannya (program berjalan dalam process
+group sendiri).
+
+Programnya adalah file yang ditemukan pemeriksaan konfigurasi: path relatif diambil dari direktori
+tempat LinkScope dijalankan, dan file itulah yang dijalankan. MRTG memeriksa path tersebut tetapi
+menjalankan nama tanpa path melalui `PATH`, yang bisa menjalankan program lain dari yang diperiksa.
+File harus dapat dieksekusi.
+
+Rahasia yang dikonfigurasi (community SNMP, kata sandi, URL webhook) yang dikutip oleh `Title[]`,
+`ThreshDesc[]`, atau `PageTop[]` diganti dengan `•••` di email, di argumen program, dan di
+`THRESH_DESC`, seperti di body webhook. Teks lain, termasuk alamat email, tetap seperti yang ditulis
+MRTG.
 
 Tanpa `ThreshDir`, MRTG menjalankan program dan mengirim email pada setiap poll yang terlampaui.
 Dengan `ThreshDir`, satu file status per batas (`<target>.threshmaxI` dan seterusnya) mencatat
 bahwa batas terlampaui, sehingga program dan email berjalan sekali saat terlampaui dan sekali saat
 pulih. LinkScope mempertahankan kedua perilaku ini.
+
+File status yang tidak dapat dipakai (`ThreshDir` hilang atau tidak dapat ditulis, atau ada hal lain
+di tempatnya: direktori, link, file milik akun lain) dicatat sebagai galat di log. LinkScope lalu
+mengingat perubahan itu di memori, sehingga program dan email tetap berjalan sekali per perubahan,
+bukan pada setiap poll.
 
 ## Tambahan dari LinkScope
 
@@ -74,7 +90,8 @@ yang hilang tidak mengaktifkan maupun menyelesaikan peringatan.
 ### Email dengan login
 
 Tanpa `AlertMailUser`, email dikirim seperti MRTG mengirimnya: SMTP biasa, ke port 25 kecuali
-`ThreshMailServer` menyebut port.
+`ThreshMailServer` menyebut port. Ke server selain host ini, LinkScope memberi peringatan saat mulai
+bahwa email dikirim tanpa TLS.
 
 Dengan `AlertMailUser` dan `AlertMailPassword`, LinkScope terhubung ke port 587 kecuali
 `ThreshMailServer` menyebut port lain, mewajibkan STARTTLS, memeriksa sertifikat server, lalu
@@ -101,6 +118,7 @@ Setiap permintaan membawa header berikut:
 | `Content-Type` | `application/json` |
 | `User-Agent` | `LinkScope/<version>` |
 | `X-LinkScope-Event` | `threshold` |
+| `X-LinkScope-Delivery` | Id pemberitahuan ini, sama pada setiap percobaan |
 | `X-LinkScope-Timestamp` | Waktu Unix percobaan ini |
 | `X-LinkScope-Signature` | `sha256=` dan HMAC-SHA256 heksadesimal dari timestamp, sebuah titik, dan body |
 
@@ -142,7 +160,16 @@ Body-nya:
 LinkScope menunggu jawaban hingga 10 detik (5 detik untuk terhubung). LinkScope mencoba tiga kali
 (segera, setelah 2 detik, setelah 10 detik) bila terjadi galat jaringan, 5xx, atau 429. Jawaban
 lain bersifat final. LinkScope tidak pernah mengikuti redirect, sehingga body bertanda tangan tidak
-dapat terkirim ke tempat yang tidak Anda konfigurasi. Kegagalan dicatat di log tanpa URL.
+dapat terkirim ke tempat yang tidak Anda konfigurasi, dan mengabaikan pengaturan proxy di
+lingkungannya (`HTTP_PROXY`, `ALL_PROXY`). Kegagalan dicatat di log tanpa URL.
+
+Pengiriman bersifat paling sedikit sekali: percobaan yang habis waktunya mungkin tetap sampai, dan
+percobaan berikutnya menjadi salinan kedua. Setiap percobaan dari satu pemberitahuan membawa
+`X-LinkScope-Delivery` yang sama, sehingga penerima membuang id pengiriman yang sudah pernah
+diterimanya.
+
+URL `http://` ke host lain diizinkan, tetapi LinkScope memberi peringatan saat mulai: body, dan token
+apa pun di URL, dikirim tanpa enkripsi. Gunakan `https://`.
 
 ### Memeriksa tanda tangan
 
@@ -154,8 +181,14 @@ untuk mencegah pengiriman ulang:
 import hashlib, hmac, time
 
 def verify(secret: bytes, timestamp: str, body: bytes, signature: str) -> bool:
-    want = "sha256=" + hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, signature) and abs(time.time() - int(timestamp)) < 300
+    """True for a signed, recent request; False for anything else, malformed headers included."""
+    try:
+        sent = int(timestamp)
+        want = hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        ok = hmac.compare_digest(("sha256=" + want).encode(), signature.encode())
+    except (TypeError, ValueError, AttributeError, UnicodeError):
+        return False
+    return ok and abs(time.time() - sent) < 300
 ```
 
 URL webhook, rahasianya, dan kata sandi email tidak pernah muncul di antarmuka, API, `/metrics`,

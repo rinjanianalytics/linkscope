@@ -45,6 +45,13 @@ rahasia penanda tangan webhook, dan kata sandi mail. Semua itu tidak pernah kelu
   `/metrics`, webhook, atau pesan kesalahan.
 - Path program ambang dan alamat email ambang juga tidak ada di API: API hanya menyebut apakah
   sebuah target memilikinya.
+- Email ambang, argumen program ambang, dan `THRESH_DESC`-nya mengganti setiap rahasia yang
+  dikonfigurasi dengan `•••`, seperti body webhook, bila judul, deskripsi, atau `PageTop[]`
+  mengutipnya.
+- Klien webhook mengabaikan pengaturan proxy di lingkungannya, sehingga tidak ada proxy yang melihat
+  body bertanda tangan.
+- LinkScope memberi peringatan saat mulai bila peringatan akan dikirim tanpa enkripsi: email ambang
+  sebagai SMTP biasa ke host lain, atau webhook `http://` ke host lain.
 - Sebuah pengujian menanam rahasia di konfigurasi lalu mencarinya di output setiap endpoint.
 
 ## Antarmuka web
