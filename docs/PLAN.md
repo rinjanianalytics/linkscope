@@ -366,8 +366,29 @@ of Release, builds both images without pushing.
           links), and an "Unreleased" section in the changelog.
       - GitHub's community profile went from 57 % to 71 %; a code of conduct and a pull request
         template are what it still lists.
-- [ ] The first release through the pipeline: its first push to GHCR with the repository's own
-      token, and the image's run on both platforms after it.
+- [x] The first release through the pipeline: 0.2.1 (AK, 2026-10-21: "cut the release").
+      A patch release, with no change in behavior or configuration: the dependency updates of
+      #33, #34 and #35 and the project work of #22. Dependabot's first nine pull requests (#23 to
+      #31, all major versions) became those three PRs and then closed on their own:
+      - #33: `hmac` 0.13, `sha2` 0.11, `nix` 0.31. Each failed alone; together they drop a second
+        copy of each crate, since `async-snmp` already used them.
+      - #34: Rust 1.99 for the image and CI together. Clippy and rustfmt needed no change.
+      - #35: React 19 as a set (#31 had moved `react-dom` alone), recharts 3, TypeScript 7 and
+        tailwind-merge 3. CI's new UI check found that Tailwind had scanned the committed
+        `dist`, so each build's CSS depended on the previous build. `index.css` now names its
+        sources, and a rebuild is byte-identical. CSS went from 57.6 to 45.4 kB. Checked in
+        installed Chrome against a binary with the new UI, beside the lab's 0.2.0: the pages
+        matched apart from live values.
+      Release PR #36 (`536fc36`), tag `v0.2.1`, then `release.yml` from 10:51 to 10:58 UTC (6 min):
+      - CI's four checks, then the image for amd64 and arm64 pushed with the repository's own token
+        (`sha256:fb5066f5...`, tags `0.2.1` and `latest`; `0.2.0` kept);
+      - the GitHub release from the changelog, now the latest;
+      - the image run on both platforms: 2 polled, 0 failed, healthy.
+      Checked without a login: the release, both tags on one index, its labels (version 0.2.1,
+      revision `536fc36`), and `linkscope 0.2.1` from a fresh pull.
+      The lab runs 0.2.1 since 18:01 WIB (built with Rust 1.99): both CHR ports ok,
+      `linkscope_info{version="0.2.1"}`, the manual over the tailnet, a foreign Host refused
+      (421). The rollback `target/release/linkscope.before-0.2.1` is 0.2.0, built from its tag.
 
 ## Open decisions
 
