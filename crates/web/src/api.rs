@@ -7,7 +7,7 @@
 //! * `GET /api/targets/{name}/series?period=day|week|month|year[&maxx=N]`
 //!   graph columns and MRTG's Max/Average/Current figures for one period
 //!
-//! `GET /metrics` (Prometheus) is in [`crate::metrics`].
+//! `GET /metrics` (Prometheus) is in [`crate::metrics`], the manual (`/api/docs`) in [`crate::docs`].
 //!
 //! Rates are in the log's unit (bytes per second, per minute with
 //! `perminute`, per hour with `perhour`). `format` tells the UI how MRTG
