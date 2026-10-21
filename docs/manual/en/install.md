@@ -88,7 +88,7 @@ docker compose up -d
 
 ## Build from source
 
-You need Rust 1.88 or newer.
+You need Rust 1.89 or newer.
 
 ```sh
 git clone https://github.com/rinjanianalytics/linkscope.git
