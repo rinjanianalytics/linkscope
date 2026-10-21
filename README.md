@@ -19,6 +19,8 @@ affiliated with or endorsed by the MRTG project. See [NOTICE](NOTICE).
 * **Modern.** SNMP v1, v2c and v3 (SHA-2 and AES), and a web UI built into
   the single binary, replacing the static HTML/PNG pages and `indexmaker`.
 
+What changed in each version, and what to check when you upgrade: [CHANGELOG.md](CHANGELOG.md).
+
 ## Manual
 
 The manual is built into LinkScope: open `/docs` on the web UI (the **Docs** link in the header),
@@ -152,7 +154,7 @@ The webhook body:
   "direction": "in", "bound": "max", "threshold": "80%",
   "threshold_rate": 100000.0, "rate": 107750.0, "percent": 86.2,
   "polls": 3, "since": 1760940000, "time": 1760940600,
-  "description": null, "linkscope": "0.1.0"
+  "description": null, "linkscope": "0.2.0"
 }
 ```
 

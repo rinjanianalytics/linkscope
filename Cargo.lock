@@ -1069,7 +1069,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "linkscope"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-snmp",
@@ -1097,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "linkscope-config"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bigdecimal",
  "glob",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "linkscope-mockagent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "tokio",
@@ -1120,14 +1120,14 @@ dependencies = [
 
 [[package]]
 name = "linkscope-rate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "linkscope-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ammonia",
  "axum",
