@@ -87,6 +87,10 @@ Tanpa `--ifref`, antarmuka dirujuk dengan ifName bila perangkat melaporkannya, d
 bila tidak. `--ifref=name` membuat pilihan ini eksplisit. Rujukan antarmuka yang tidak dapat
 ditulis dengan aman (misalnya nama yang mengandung backtick) kembali memakai ifIndex.
 
+Inilah yang juga dilakukan cfgmaker MRTG 2.17.10, sesuai dengan `--help`-nya
+(`--ifref=name ... (default)`). Halaman manual MRTG yang lebih panjang masih menyebut bawaannya
+`nr`; kalimat itu sudah usang. Untuk tetap memakai rujukan ifIndex, gunakan `--ifref=nr`.
+
 Antarmuka yang dilewati cfgmaker (down, jenis yang tidak digrafikkan, atau ditolak filter) tetap
 ditulis dalam bentuk komentar, dengan alasannya di atasnya. Hapus `#` untuk tetap memakainya.
 
