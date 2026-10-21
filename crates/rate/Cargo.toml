@@ -7,3 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 
+[target.'cfg(unix)'.dependencies]
+# O_NOFOLLOW and O_NONBLOCK as the platform defines them (save.rs).
+libc = "0.2"
+

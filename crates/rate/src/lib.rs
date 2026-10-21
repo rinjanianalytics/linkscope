@@ -67,6 +67,11 @@ pub(crate) const MONTH_SAMPLE: i64 = 2 * 60 * 60;
 pub(crate) const YEAR_COUNT: usize = 2 * 366;
 pub(crate) const YEAR_SAMPLE: i64 = 24 * 60 * 60;
 pub(crate) const MAX_HISTORY: usize = DAY_COUNT + WEEK_COUNT + MONTH_COUNT + YEAR_COUNT + 10;
+/// History lines read from a log at most. A log rateup writes has fewer than [`MAX_HISTORY`];
+/// rateup grows its array for longer ones, and this port did too, without bound: 4 MB of blank
+/// lines (each repeats the line before) became about 170 MB of history. Sixteen times a full log
+/// leaves every log rateup can write, and far longer ones, read as before.
+pub(crate) const MAX_READ_HISTORY: usize = 16 * MAX_HISTORY;
 
 /// Longest `in`/`out` string accepted by [`RateLog::update`]. rateup re-reads
 /// line 1 with `%199s`, and its `diff()` overflows its 200-byte buffer for
@@ -407,6 +412,17 @@ impl RateLog {
     /// Raw `in`/`out` bytes of the last update.
     pub fn last_raw_bytes(&self) -> (&[u8], &[u8]) {
         (&self.last_in, &self.last_out)
+    }
+
+    /// Forget the last update's raw values, as if there were no previous counter (rateup's `x`
+    /// marker): the next update repeats the last rate instead of taking a difference. For a log
+    /// whose line 1 holds a value too long to diff (only a damaged or hand-made log can), which
+    /// would otherwise refuse every update and never be rewritten.
+    pub fn forget_last_values(&mut self) {
+        self.last_in.clear();
+        self.last_in.push(b'x');
+        self.last_out.clear();
+        self.last_out.push(b'x');
     }
 
     /// The newest history entry: `(time, in_rate, out_rate)`, i.e. line 2

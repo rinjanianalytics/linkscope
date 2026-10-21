@@ -79,3 +79,11 @@ alerts), with `cargo audit` and `npm audit`. Fixed:
 | The summary gave the configuration's full path to a UI without a login | anyone who reaches the UI | its file name only (`config_name`) |
 | API and metrics answers carried no `Cache-Control`; unknown `/api/*` paths and any method got the UI's page with 200 | a shared proxy, scanners | `no-store` on live data, 404 for unknown API paths, 405 for anything but GET and HEAD, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin` |
 | The UI's build tools had 10 advisories (PostCSS, Vite 5, Tailwind 3's file watching); none in the shipped bundle | a developer's machine | Vite 8, Tailwind 4: `npm audit` finds none |
+| A log of blank lines grew the history without bound (4 MB became about 170 MB) | whoever can write a log | at most 16 times a full log's lines are read |
+| A log with an update far in the future, or a line 1 value too long to compare, refused every update for ever | a damaged log | set aside as `<name>.future` with a new log; the value forgotten and the rate started afresh |
+| Two history lines with the same time gave a 0/0 rate, read as a huge negative one that could fire a `ThreshMin` alert | a damaged log | that value is no rate for the UI and the thresholds; the log stays as rateup writes it |
+| The log reader's `O_NOFOLLOW` and `O_NONBLOCK` were hard-coded per architecture, 0 on the others | other architectures | the platform's own values |
+| `Directory[]` was checked for symlinks by name, then used by name; `create_dirs` followed symlinks | whoever can write LogDir | logs read and written through the opened directory; levels created one at a time |
+| A pid file left behind was read by name as root (a swapped symlink followed, a FIFO hung the start) | the service account | the lock is taken first and the old pid file is never read |
+| Include had no limit on files in all (16 levels of N), read FIFOs and devices, and tried the working directory first | the config | 1,000 files and 64 MB in all, regular files only, relative to the main configuration |
+| `ThreshMailServer` was looked up in DNS and `ConversionCode` opened blocking, during `--check` and reloads | the config, slow DNS | checked by form; opened without blocking |

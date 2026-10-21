@@ -9,7 +9,6 @@
 //! data-only parser ([`crate::perlhash`]) instead of Perl `eval`, and
 //! `ConversionCode` is accepted but reported as unsupported by `check`.
 
-use std::net::ToSocketAddrs;
 use std::path::Path;
 
 use regex::Regex;
@@ -105,15 +104,26 @@ fn interval_ok(v: &str) -> bool {
     (1.0..=3600.0).contains(&secs)
 }
 
-fn resolvable(host: &str) -> bool {
-    !host.is_empty() && (host, 25).to_socket_addrs().map(|mut a| a.next().is_some()).unwrap_or(false)
+/// A host name or an IP address, by its form. MRTG resolved the name here; that blocked `--check`
+/// and a reload (on the daemon's runtime) for as long as DNS took. A name that does not resolve
+/// now shows when mail is sent, in the log.
+fn host_like(host: &str) -> bool {
+    let h = host.trim_start_matches('[').trim_end_matches(']');
+    h.parse::<std::net::IpAddr>().is_ok()
+        || (!h.is_empty() && h.len() <= 253 && h.trim_end_matches('.').split('.').all(|l| !l.is_empty() && l.len() <= 63 && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')))
+}
+
+/// A file that can be read, checked without blocking (a FIFO no longer hangs the check).
+fn readable_file(v: &str) -> bool {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC).open(v).and_then(|f| f.metadata()).is_ok_and(|m| m.is_file())
 }
 
 /// `ThreshMailServer`: a host name, or LinkScope's `host:port`.
 fn mail_server(v: &str) -> bool {
     match v.rsplit_once(':') {
-        Some((h, p)) if !h.contains(':') && p.parse::<u16>().is_ok_and(|p| p > 0) => resolvable(h),
-        _ => resolvable(v),
+        Some((h, p)) if !h.contains(':') && p.parse::<u16>().is_ok_and(|p| p > 0) => host_like(h),
+        _ => host_like(v),
     }
 }
 
@@ -166,7 +176,7 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
             "Must have the format \"OptA => Number, OptB => 'String', ... \"".into()
         ),
         ("conversioncode", false) => rule!(
-            std::fs::File::open(v).is_ok(),
+            readable_file(v),
             format!("Cannot read conversion code file {v}")
         ),
         ("sendtographite", false) => rule!(re(r"^.*,[0-9]+$").is_match(v), format!("Invalid Graphite Destination '{v}'")),
