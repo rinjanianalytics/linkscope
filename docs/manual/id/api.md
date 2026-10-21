@@ -40,7 +40,7 @@ yang aman: struktur dan format teks, serta tautan hanya ke `http` dan `https`.
 
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "started": 1760940000,
   "now": 1760943600,
   "cycles": 12,

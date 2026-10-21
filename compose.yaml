@@ -16,7 +16,7 @@
 
 services:
   linkscope:
-    image: ${LINKSCOPE_IMAGE:-ghcr.io/rinjanianalytics/linkscope:0.2.0}
+    image: ${LINKSCOPE_IMAGE:-ghcr.io/rinjanianalytics/linkscope:0.2.1}
     # Without a published image (or to build your own): docker compose build
     build:
       context: .
