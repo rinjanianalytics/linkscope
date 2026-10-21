@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/rate", "crates/config", "crates/mockagent", "crates/web", "crates/linkscope"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 license = "GPL-2.0-or-later"
 rust-version = "1.89"
