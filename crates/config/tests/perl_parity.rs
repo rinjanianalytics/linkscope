@@ -272,7 +272,7 @@ fn random_configs_match_perl() {
     let cases = 1500;
     for case in 0..cases {
         let mut s = String::from("WorkDir: @WORK@\n");
-        if rng.next() % 3 == 0 {
+        if rng.next().is_multiple_of(3) {
             s.push_str("NoSpaceChar: ~\n");
         }
         let lines = 5 + rng.next() % 25;
@@ -284,7 +284,7 @@ fn random_configs_match_perl() {
                 2 => {
                     let k = rng.pick(&keys);
                     let w = rng.pick(&["_", "^", "$"]);
-                    let v = if rng.next() % 4 == 0 { "" } else { rng.pick(&values) };
+                    let v = if rng.next().is_multiple_of(4) { "" } else { rng.pick(&values) };
                     s.push_str(&format!("{k}[{w}]: {v}\n"));
                 }
                 3 => s.push_str(&format!("   {}\n", rng.pick(&values))),
@@ -298,7 +298,7 @@ fn random_configs_match_perl() {
             }
         }
         for t in targets {
-            if rng.next() % 2 == 0 && defined.insert((t.to_lowercase(), "target".into())) {
+            if rng.next().is_multiple_of(2) && defined.insert((t.to_lowercase(), "target".into())) {
                 s.push_str(&format!("Target[{t}]: {}\n", rng.pick(&tgt_exprs)));
             }
         }

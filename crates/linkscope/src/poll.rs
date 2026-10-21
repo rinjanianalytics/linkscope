@@ -514,11 +514,10 @@ impl Pseudo {
         if let Some(c) = IDX.captures(spec) {
             let idx = c[1].to_string();
             let mut s = spec.replacen("IndexPOS", &idx, 1);
-            if let Some(p) = s.rfind('.') {
-                if s[p + 1..].bytes().all(|b| b.is_ascii_digit()) {
+            if let Some(p) = s.rfind('.')
+                && s[p + 1..].bytes().all(|b| b.is_ascii_digit()) {
                     s.truncate(p);
                 }
-            }
             return Some(Pseudo::IndexPos(s));
         }
         None
