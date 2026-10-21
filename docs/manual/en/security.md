@@ -87,7 +87,13 @@ supported and recommended.
 ### Hostile or slow agents
 
 - Each agent has a time budget per cycle (80 % of `Interval`).
-- Table walks are limited by time, rows and bytes.
+- Table walks are limited by time, rows (100,000) and bytes, each row counting what it costs.
+  The interface cache keeps at most 8 MB per device, and the `.ok` file stays as small.
+- A GET answer is used only for the object it names, so a stray or stale reply cannot put one
+  interface's counter on another.
+- After a request that got no answer, the next one goes out from a new socket, so a late reply
+  to the old request cannot be read as the new one's.
+- Device strings (sysName, uptime) are kept to 256 characters.
 - Numbers longer than 64 characters are rejected, and so is any value wider than 190 digits
   (MRTG's limit), judged before it is expanded: `1e999999999` is no number.
 - An SNMPv3 session whose replies are refused, or whose authentication fails, is opened again

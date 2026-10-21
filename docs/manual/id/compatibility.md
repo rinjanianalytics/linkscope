@@ -88,7 +88,9 @@ Lihat [Keamanan](security.md) untuk model lengkapnya.
 - Setiap agen boleh memakai paling banyak 80 % dari `Interval` per siklus. Setelah itu, targetnya
   tidak diketahui untuk siklus tersebut dan target lain tetap berjalan.
 - Perintah eksternal: hanya empat baris pertama yang dibaca (seperti di MRTG), lalu grup proses
-  perintah dihentikan; timeout-nya 120 dtk.
+  perintah dihentikan; timeout-nya 120 dtk. Grup itu juga dihentikan saat perintah selesai, sehingga
+  sesuatu yang dijalankannya di latar belakang tidak terus berjalan (MRTG membiarkannya). `PathAdd`
+  tanpa `PATH` yang ditetapkan menghasilkan direktori itu saja, tidak pernah direktori saat ini.
 - Program dan email ambang batas berjalan di latar belakang, delapan sekaligus.
 - Nilai lebih dari 64 karakter dari agen atau perintah ditolak.
 - Log yang tidak dapat ditulis dilaporkan sebagai kesalahan (di antarmuka web dan log). Seperti di
