@@ -443,15 +443,13 @@ fn unescape(s: &str, set: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut it = s.chars().peekable();
     while let Some(c) = it.next() {
-        if c == '\\' {
-            if let Some(&n) = it.peek() {
-                if set.contains(n) {
+        if c == '\\'
+            && let Some(&n) = it.peek()
+                && set.contains(n) {
                     out.push(n);
                     it.next();
                     continue;
                 }
-            }
-        }
         out.push(c);
     }
     out

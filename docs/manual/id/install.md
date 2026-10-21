@@ -5,7 +5,7 @@ tertanam di dalamnya, sehingga Anda cukup melakukan build Rust biasa.
 
 ## Membangun dari kode sumber
 
-Anda memerlukan Rust 1.85 atau yang lebih baru.
+Anda memerlukan Rust 1.88 atau yang lebih baru.
 
 ```sh
 git clone https://github.com/rinjanianalytics/linkscope.git

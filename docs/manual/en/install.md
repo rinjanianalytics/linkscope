@@ -5,7 +5,7 @@ normal Rust build is all you need.
 
 ## Build from source
 
-You need Rust 1.85 or newer.
+You need Rust 1.88 or newer.
 
 ```sh
 git clone https://github.com/rinjanianalytics/linkscope.git

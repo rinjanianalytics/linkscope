@@ -93,10 +93,9 @@ pub(crate) fn save_atomic(dir: &Path, base: &str, content: &[u8], sync: bool) ->
         return Err(e);
     }
     // Make the renames durable; not all platforms can open a directory.
-    if sync {
-        if let Ok(d) = File::open(dir) {
+    if sync
+        && let Ok(d) = File::open(dir) {
             let _ = d.sync_all();
         }
-    }
     Ok(())
 }

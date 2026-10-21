@@ -191,11 +191,10 @@ pub fn view(cfg: &std::sync::Arc<Config>) -> std::sync::Arc<View> {
     use std::sync::{Arc, Mutex};
     static CACHE: Mutex<Option<(Arc<Config>, Arc<View>)>> = Mutex::new(None);
     let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some((k, v)) = c.as_ref() {
-        if Arc::ptr_eq(k, cfg) {
+    if let Some((k, v)) = c.as_ref()
+        && Arc::ptr_eq(k, cfg) {
             return v.clone();
         }
-    }
     let v = Arc::new(View::build(cfg));
     *c = Some((cfg.clone(), v.clone()));
     v
