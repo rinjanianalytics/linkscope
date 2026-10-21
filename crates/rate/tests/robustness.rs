@@ -296,3 +296,18 @@ fn fifo_or_symlinked_log_is_not_read() {
     assert_ne!(l.last_raw(), ("5", "5"), "symlinked log must not be followed");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// 4 MB of blank lines (each repeats the line before) became about 170 MB of history: reading
+/// stops well past any log rateup writes (2026-10-21).
+#[test]
+fn a_log_of_blank_lines_is_read_with_bounded_history() {
+    let mut data = b"1700000000 100 200\n1700000000 1 1 1 1\n".to_vec();
+    data.resize(data.len() + 4_000_000, b'\n');
+    let log = RateLog::from_bytes(Some(&data), None, 1_700_000_300).unwrap();
+    // 16 times MAX_HISTORY (600 + 600 + 600 + 732 + 10).
+    assert!(log.history_len() <= 16 * 2542, "{}", log.history_len());
+    // A normal log is read whole, as before.
+    let good = sample_log();
+    let normal = RateLog::from_bytes(Some(&good), None, 1_700_020_000).unwrap();
+    assert_eq!(normal.render_bytes(), good);
+}

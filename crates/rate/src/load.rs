@@ -62,7 +62,7 @@ impl Loader {
         let mut cur = self.last_time;
         let mut x = 0usize;
         self.hist.valid = 0;
-        while pos < data.len() {
+        while pos < data.len() && x < crate::MAX_READ_HISTORY {
             // fgets: up to and including '\n', at most 255 bytes.
             let rest = &data[pos..];
             let lim = rest.len().min(FGETS_MAX);

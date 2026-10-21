@@ -108,7 +108,14 @@ See [Security](security.md) for the full model.
   keywords: `WebListen`, `ExecShell`, `AlertWebhook`, `AlertWebhookSecret`, `AlertMailUser`,
   `AlertMailPassword`. New per-target keyword: `ThreshFor[]`. MRTG rejects these keywords, so keep
   them out of configurations you still share with MRTG.
-- `ThreshMailServer` also takes `host:port`.
+- `ThreshMailServer` also takes `host:port`. It is checked by its form, not looked up in DNS
+  (MRTG's lookup blocked a reload); a name that does not resolve shows in the log when mail is
+  sent.
+- A relative `Include:` is read from the main configuration's directory only, not from the
+  working directory first.
+- A log that claims an update more than a day in the future is set aside as `<name>.future` and a
+  new log started (MRTG refused to update it until that time came). A log whose line 1 holds a
+  value too long to compare with starts its rate afresh instead of refusing every update.
 - Thresholds of a target without `ThreshFor[]` run their programs and mails exactly as MRTG does.
   With `ThreshFor[]`, they run once when an alert fires and once when it clears. Either way, the
   alert state is also kept in `<config>.alerts`, for the UI and `AlertWebhook`. See
