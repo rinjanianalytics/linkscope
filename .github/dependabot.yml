@@ -1,0 +1,35 @@
+# Dependency updates, weekly, grouped so each ecosystem opens at most one pull request a week
+# besides security updates (which Dependabot opens as soon as an advisory appears).
+#
+# npm: the UI is built into crates/web/ui/dist and committed. CI rebuilds it and fails when dist
+# differs, so an npm update needs `npm run build` in crates/web/ui and the new dist committed on
+# its branch before it can merge.
+# docker: the Dockerfile's rust image and CI's RUST_VERSION change together (ci.yml).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Asia/Jakarta }
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /crates/web/ui
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Asia/Jakarta }
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Asia/Jakarta }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00", timezone: Asia/Jakarta }

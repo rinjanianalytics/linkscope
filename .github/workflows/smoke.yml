@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Runs the published image the way the manual's "Run with Docker" tells people to, on amd64 and
+# on arm64 (GitHub's arm runner, so the arm64 image runs natively): cfgmaker from the image
+# against a real SNMP agent, `docker compose up`, then a poll that succeeded, /metrics and /docs.
+#
+# After every release (release.yml calls it with the new tag), by hand (Actions, Image smoke
+# test, Run workflow, any tag), and on a pull request that changes the compose file.
+name: Image smoke test
+
+on:
+  pull_request:
+    paths:
+      - compose.yaml
+      - .env.example
+      - .github/workflows/smoke.yml
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The image tag to test
+        required: true
+        default: latest
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Image on ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      LINKSCOPE_IMAGE: ghcr.io/rinjanianalytics/linkscope:${{ inputs.tag || 'latest' }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: An SNMP agent on the runner
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq snmpd
+          printf 'agentAddress udp:161\nrocommunity public default\nsysName linkscope-smoke\n' \
+            | sudo tee /etc/snmp/snmpd.conf >/dev/null
+          sudo systemctl restart snmpd
+
+      - name: Pull the image, without a login
+        run: |
+          set -eu
+          docker compose pull
+          arch=$(docker image inspect -f '{{.Architecture}}' "$LINKSCOPE_IMAGE")
+          echo "pulled $LINKSCOPE_IMAGE for $arch"
+          [ "$arch" = "$ARCH" ] || { echo "::error::got $arch, expected $ARCH"; exit 1; }
+          docker run --rm "$LINKSCOPE_IMAGE" --version
+
+      - name: The manual's quick start
+        run: |
+          set -eu
+          # The container reaches the runner's agent through the host gateway.
+          printf 'services:\n  linkscope:\n    extra_hosts: ["host.docker.internal:host-gateway"]\n' > compose.smoke.yaml
+          compose="docker compose -f compose.yaml -f compose.smoke.yaml"
+          $compose run --rm -T linkscope cfgmaker --global 'WorkDir: /var/lib/linkscope' \
+            --ifref=name public@host.docker.internal:::::2 > mrtg.cfg
+          targets=$(grep -c '^Target\[' mrtg.cfg || true)
+          echo "cfgmaker wrote $targets targets"
+          [ "$targets" -ge 1 ] || { cat mrtg.cfg; echo "::error::cfgmaker found no interfaces"; exit 1; }
+          sudo chown root:10001 mrtg.cfg
+          sudo chmod 640 mrtg.cfg
+          $compose up -d --no-build
+
+      - name: A poll that succeeded, /metrics and /docs
+        run: |
+          set -eu
+          for i in $(seq 1 60); do
+            summary=$(curl -fsS http://127.0.0.1:8080/api/summary 2>/dev/null || true)
+            ok=$(echo "$summary" | jq -r '.last_cycle.ok // 0' 2>/dev/null || echo 0)
+            [ "$ok" -ge 1 ] && break
+            sleep 2
+          done
+          echo "$summary" | jq '{version, last_cycle}'
+          [ "$(echo "$summary" | jq -r '.last_cycle.ok')" -ge 1 ] || { echo "::error::no target polled"; exit 1; }
+          [ "$(echo "$summary" | jq -r '.last_cycle.failed')" -eq 0 ] || { echo "::error::a target failed"; exit 1; }
+          curl -fsS http://127.0.0.1:8080/metrics | grep -m1 '^linkscope_target_counter_total'
+          curl -fsS -o /dev/null -w '/docs: %{http_code}\n' http://127.0.0.1:8080/docs
+          for i in $(seq 1 30); do
+            health=$(docker inspect -f '{{.State.Health.Status}}' linkscope)
+            [ "$health" = healthy ] && break
+            sleep 3
+          done
+          echo "container health: $health"
+          [ "$health" = healthy ]
+
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color linkscope | tail -n 50
