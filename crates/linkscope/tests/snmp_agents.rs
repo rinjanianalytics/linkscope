@@ -4,8 +4,8 @@
 
 use std::time::Duration;
 
-use linkscope_config::{SnmpVersion, SnmpOptions};
 use linkscope::snmp::{Endpoint, Session, V3Params, Val};
+use linkscope_config::{SnmpOptions, SnmpVersion};
 
 fn ep(port: u16, version: SnmpVersion, community: &str) -> Endpoint {
     Endpoint {
@@ -37,8 +37,18 @@ async fn up(e: &Endpoint) -> Option<Session> {
 
 #[tokio::test]
 async fn v2c_get_batch_and_walk() {
-    let Some(mut s) = up(&ep(20161, SnmpVersion::V2c, "dev1")).await else { return };
-    let oids: Vec<String> = (1..=24).flat_map(|i| [format!("1.3.6.1.2.1.2.2.1.10.{i}"), format!("1.3.6.1.2.1.31.1.1.1.6.{i}")]).chain(["1.3.6.1.2.1.1.5.0".into(), "1.3.6.1.2.1.99.9.9".into()]).collect();
+    let Some(mut s) = up(&ep(20161, SnmpVersion::V2c, "dev1")).await else {
+        return;
+    };
+    let oids: Vec<String> = (1..=24)
+        .flat_map(|i| {
+            [
+                format!("1.3.6.1.2.1.2.2.1.10.{i}"),
+                format!("1.3.6.1.2.1.31.1.1.1.6.{i}"),
+            ]
+        })
+        .chain(["1.3.6.1.2.1.1.5.0".into(), "1.3.6.1.2.1.99.9.9".into()])
+        .collect();
     let v = s.get(&oids).await.unwrap();
     assert_eq!(v.len(), 50);
     assert!(matches!(v[0], Val::Unsigned(_)));
@@ -55,8 +65,17 @@ async fn v2c_get_batch_and_walk() {
 
 #[tokio::test]
 async fn v1_get_with_missing_oid_and_getnext_walk() {
-    let Some(mut s) = up(&ep(20161, SnmpVersion::V1, "dev2")).await else { return };
-    let v = s.get(&["1.3.6.1.2.1.2.2.1.10.3".into(), "1.3.6.1.2.1.77.1".into(), "1.3.6.1.2.1.1.5.0".into()]).await.unwrap();
+    let Some(mut s) = up(&ep(20161, SnmpVersion::V1, "dev2")).await else {
+        return;
+    };
+    let v = s
+        .get(&[
+            "1.3.6.1.2.1.2.2.1.10.3".into(),
+            "1.3.6.1.2.1.77.1".into(),
+            "1.3.6.1.2.1.1.5.0".into(),
+        ])
+        .await
+        .unwrap();
     assert!(matches!(v[0], Val::Unsigned(_)), "{v:?}");
     assert_eq!(v[1], Val::Missing);
     assert_eq!(v[2].pretty(), "dev2.lab");
@@ -66,7 +85,11 @@ async fn v1_get_with_missing_oid_and_getnext_walk() {
 
 #[tokio::test]
 async fn wrong_community_times_out() {
-    let e = Endpoint { timeout: Duration::from_millis(300), retries: 1, ..ep(20171, SnmpVersion::V2c, "wrong") };
+    let e = Endpoint {
+        timeout: Duration::from_millis(300),
+        retries: 1,
+        ..ep(20171, SnmpVersion::V2c, "wrong")
+    };
     let mut s = Session::open(&e).await.unwrap();
     let t = std::time::Instant::now();
     assert!(s.get(&["1.3.6.1.2.1.1.5.0".into()]).await.is_err());
@@ -87,7 +110,10 @@ async fn v3(user: &str, auth: &str, privp: Option<&str>) -> Option<String> {
     let probe = up(&ep(20171, SnmpVersion::V2c, "public")).await?;
     drop(probe);
     let mut s = Session::open(&e).await.unwrap();
-    let v = s.get(&["1.3.6.1.2.1.1.5.0".into(), "1.3.6.1.2.1.2.2.1.10.1".into()]).await.unwrap();
+    let v = s
+        .get(&["1.3.6.1.2.1.1.5.0".into(), "1.3.6.1.2.1.2.2.1.10.1".into()])
+        .await
+        .unwrap();
     assert!(matches!(v[1], Val::Unsigned(_)));
     let w = s.walk("1.3.6.1.2.1.2.2.1.2").await.unwrap();
     assert!(!w.is_empty());
@@ -117,7 +143,9 @@ async fn v3_sha256_aes() {
 
 #[tokio::test]
 async fn v3_wrong_password_is_reported() {
-    let Some(_) = up(&ep(20171, SnmpVersion::V2c, "public")).await else { return };
+    let Some(_) = up(&ep(20171, SnmpVersion::V2c, "public")).await else {
+        return;
+    };
     let mut o = SnmpOptions::new();
     o.insert("username".into(), "v3priv".into());
     o.insert("authpassword".into(), "wrongpass1".into());

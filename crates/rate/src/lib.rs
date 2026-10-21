@@ -358,7 +358,11 @@ impl RateLog {
 
     /// Like [`RateLog::load`] but from in-memory file contents; `None` means
     /// the file could not be opened. Useful for tests and fuzzing.
-    pub fn from_bytes(log: Option<&[u8]>, old: Option<&[u8]>, now: i64) -> Result<RateLog, RateError> {
+    pub fn from_bytes(
+        log: Option<&[u8]>,
+        old: Option<&[u8]>,
+        now: i64,
+    ) -> Result<RateLog, RateError> {
         let mut ld = Loader::new();
         if ld.readhist(log) == ReadCode::Ok {
             return Ok(Self::from_loader(ld));
@@ -373,10 +377,19 @@ impl RateLog {
         Self::from_loader(ld)
     }
 
-    fn finish_fallback(mut ld: Loader, old: Option<&[u8]>, now: i64, base: &str) -> Result<RateLog, RateError> {
+    fn finish_fallback(
+        mut ld: Loader,
+        old: Option<&[u8]>,
+        now: i64,
+        base: &str,
+    ) -> Result<RateLog, RateError> {
         match ld.readhist(old) {
             ReadCode::Ok => {}
-            ReadCode::Unsorted => return Err(RateError::Corrupt { base: base.to_owned() }),
+            ReadCode::Unsorted => {
+                return Err(RateError::Corrupt {
+                    base: base.to_owned(),
+                });
+            }
             ReadCode::Unreadable => ld.create_fresh(now),
         }
         Ok(Self::from_loader(ld))
@@ -470,7 +483,14 @@ impl RateLog {
         if now < self.last_time {
             return UpdateOutcome::TimeWarp;
         }
-        let (inrate, outrate) = match self.rates(now, input.as_bytes(), output.as_bytes(), abs_max, mode, unknown_as_zero) {
+        let (inrate, outrate) = match self.rates(
+            now,
+            input.as_bytes(),
+            output.as_bytes(),
+            abs_max,
+            mode,
+            unknown_as_zero,
+        ) {
             Ok(r) => r,
             Err(e) => return UpdateOutcome::Rejected(e),
         };
@@ -483,7 +503,10 @@ impl RateLog {
         lhist.clear();
         lhist.reserve(MAX_HISTORY);
 
-        rows.push(Row { time: now, vals: [inrate, outrate, inrate, outrate] });
+        rows.push(Row {
+            time: now,
+            vals: [inrate, outrate, inrate, outrate],
+        });
         lhist.push(Hist {
             time: now,
             inr: inrate as f64,
@@ -492,8 +515,17 @@ impl RateLog {
             outmax: outrate as f64,
         });
         let mut emit = |t: i64, a: Agg| {
-            rows.push(Row { time: t, vals: [c_ll(a.inr), c_ll(a.outr), a.inmax, a.outmax] });
-            lhist.push(Hist { time: t, inr: a.inr, outr: a.outr, inmax: a.inmax as f64, outmax: a.outmax as f64 });
+            rows.push(Row {
+                time: t,
+                vals: [c_ll(a.inr), c_ll(a.outr), a.inmax, a.outmax],
+            });
+            lhist.push(Hist {
+                time: t,
+                inr: a.inr,
+                outr: a.outr,
+                inmax: a.inmax as f64,
+                outmax: a.outmax as f64,
+            });
         };
 
         // "just in case we were dead for a long time, don't try to gather
@@ -543,7 +575,10 @@ impl RateLog {
             }
         }));
         let valid = lhist.len();
-        self.hist = HistBuf { entries: lhist, valid };
+        self.hist = HistBuf {
+            entries: lhist,
+            valid,
+        };
         self.rows = Some(rows);
         self.view = Some(view);
         self.last_time = now;
@@ -569,7 +604,11 @@ impl RateLog {
         let (mut inrate, mut outrate);
         if period <= 0.0 || period > 3600.0 || self.last_in.first() == Some(&b'x') {
             // "if last update is strange": sync with zero or the last value.
-            (inrate, outrate) = if zero { (0, 0) } else { (c_ll(h0.inr), c_ll(h0.outr)) };
+            (inrate, outrate) = if zero {
+                (0, 0)
+            } else {
+                (c_ll(h0.inr), c_ll(h0.outr))
+            };
         } else {
             inrate = one_rate(input, &self.last_in, h0.inr, mode, period, zero)?;
             outrate = one_rate(output, &self.last_out, h0.outr, mode, period, zero)?;
@@ -600,7 +639,8 @@ impl RateLog {
     /// hand-edited log had non-UTF-8 bytes in line 1).
     pub fn render_bytes(&self) -> Vec<u8> {
         let lines = self.rows.as_ref().map_or(self.hist.valid, Vec::len);
-        let mut out = Vec::with_capacity(self.last_in.len() + self.last_out.len() + 24 + lines * 48);
+        let mut out =
+            Vec::with_capacity(self.last_in.len() + self.last_out.len() + 24 + lines * 48);
         push_i64(&mut out, self.last_time);
         out.push(b' ');
         out.extend_from_slice(&self.last_in);
@@ -666,7 +706,13 @@ impl RateLog {
             let outr = a.outr * muli;
             let inmax = c_ll(a.inmax as f64 * muli);
             let outmax = c_ll(a.outmax as f64 * muli);
-            points.push(Point { time: now, r#in: inr, out: outr, in_max: inmax as f64, out_max: outmax as f64 });
+            points.push(Point {
+                time: now,
+                r#in: inr,
+                out: outr,
+                in_max: inmax as f64,
+                out_max: outmax as f64,
+            });
             if inmax > 0 || outmax > 0 || inr > 0.0 || outr > 0.0 || opts.withzeroes {
                 valsamp += 1;
             }
@@ -747,7 +793,14 @@ fn check_raw(s: &str) -> Result<(), InputError> {
 }
 
 /// One direction of rateup's rate calculation for a normal period.
-fn one_rate(cur: &[u8], last: &[u8], h0: f64, mode: Mode, period: f64, zero: bool) -> Result<i64, InputError> {
+fn one_rate(
+    cur: &[u8],
+    last: &[u8],
+    h0: f64,
+    mode: Mode,
+    period: f64,
+    zero: bool,
+) -> Result<i64, InputError> {
     if cur == b"-1" || last == b"-1" {
         return Ok(if zero { 0 } else { c_ll(h0) });
     }

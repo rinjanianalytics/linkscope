@@ -25,7 +25,10 @@ use serde::{Deserialize, Serialize};
 use crate::state::SharedState;
 
 fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// HTML from the config (PageTop, Title, Legends) is reduced to a safe
@@ -34,8 +37,8 @@ fn now() -> i64 {
 pub fn sanitize(html: &str) -> String {
     use std::collections::HashSet;
     let tags: HashSet<&str> = [
-        "h1", "h2", "h3", "h4", "div", "span", "p", "br", "b", "i", "em", "strong", "small", "code", "pre", "table", "thead", "tbody", "tr", "td", "th", "ul", "ol",
-        "li", "a",
+        "h1", "h2", "h3", "h4", "div", "span", "p", "br", "b", "i", "em", "strong", "small",
+        "code", "pre", "table", "thead", "tbody", "tr", "td", "th", "ul", "ol", "li", "a",
     ]
     .into_iter()
     .collect();
@@ -80,8 +83,16 @@ impl Format {
         let units: Vec<String> = match (&t.kmg, &t.short_legend) {
             (Some(kmg), Some(sl)) => kmg.iter().map(|k| format!("{k}{sl}")).collect(),
             (Some(kmg), None) => kmg.iter().map(|k| format!("{k}{unit}{per}")).collect(),
-            (None, Some(sl)) if !sl.is_empty() => vec![sl.clone(), format!("k{sl}"), format!("M{sl}"), format!("G{sl}")],
-            _ => ["", "k", "M", "G"].iter().map(|p| format!("{p}{unit}{per}")).collect(),
+            (None, Some(sl)) if !sl.is_empty() => vec![
+                sl.clone(),
+                format!("k{sl}"),
+                format!("M{sl}"),
+                format!("G{sl}"),
+            ],
+            _ => ["", "k", "M", "G"]
+                .iter()
+                .map(|p| format!("{p}{unit}{per}"))
+                .collect(),
         };
         Format {
             mul: if o.bits { 8.0 } else { 1.0 },
@@ -97,14 +108,29 @@ impl Format {
     pub fn fmi(&self, number: f64, maxbytes: f64) -> String {
         let mut divnum = number * self.mul * self.factor;
         let mut divm = 0;
-        while (divnum >= 10.0 * self.kilo || self.units.get(divm).is_some_and(|u| u.starts_with('-'))) && divm + 1 < self.units.len() {
+        while (divnum >= 10.0 * self.kilo
+            || self.units.get(divm).is_some_and(|u| u.starts_with('-')))
+            && divm + 1 < self.units.len()
+        {
             divm += 1;
             divnum /= self.kilo;
         }
         let unit = self.units.get(divm).map(String::as_str).unwrap_or("");
-        let perc = if number == 0.0 || maxbytes == 0.0 { 0.0 } else { 100.0 / maxbytes * number };
-        let num = if self.integer { format!("{divnum:.0}") } else { format!("{divnum:.1}") };
-        if self.nopercent { format!("{num} {unit}") } else { format!("{num} {unit} ({perc:.1}%)") }
+        let perc = if number == 0.0 || maxbytes == 0.0 {
+            0.0
+        } else {
+            100.0 / maxbytes * number
+        };
+        let num = if self.integer {
+            format!("{divnum:.0}")
+        } else {
+            format!("{divnum:.1}")
+        };
+        if self.nopercent {
+            format!("{num} {unit}")
+        } else {
+            format!("{num} {unit} ({perc:.1}%)")
+        }
     }
 }
 
@@ -112,7 +138,8 @@ impl Format {
 /// `2:secret@router` becomes `2:•••@router`.
 pub fn mask_communities(target: &str) -> String {
     use std::sync::LazyLock;
-    static RE: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?:\\[@ ]|[^\s@:`&])+@").unwrap());
+    static RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?:\\[@ ]|[^\s@:`&])+@").unwrap());
     RE.replace_all(target, "•••@").into_owned()
 }
 
@@ -143,7 +170,16 @@ impl View {
         }
         // The webhook URL may carry a token; the secret and password are keys.
         let g = &cfg.global;
-        secrets.extend([&g.alert_webhook, &g.alert_webhook_secret, &g.alert_mail_password].into_iter().flatten().cloned());
+        secrets.extend(
+            [
+                &g.alert_webhook,
+                &g.alert_webhook_secret,
+                &g.alert_mail_password,
+            ]
+            .into_iter()
+            .flatten()
+            .cloned(),
+        );
         for t in &cfg.targets {
             for k in ["authpassword", "privpassword", "authkey", "privkey"] {
                 if let Some(v) = t.snmp_options.get(k) {
@@ -159,8 +195,26 @@ impl View {
         View {
             secrets,
             title_html: cfg.targets.iter().map(|t| sanitize(&t.title)).collect(),
-            legend_i: cfg.targets.iter().map(|t| t.legend_i.as_deref().map(sanitize).unwrap_or_else(|| "In".into())).collect(),
-            legend_o: cfg.targets.iter().map(|t| t.legend_o.as_deref().map(sanitize).unwrap_or_else(|| "Out".into())).collect(),
+            legend_i: cfg
+                .targets
+                .iter()
+                .map(|t| {
+                    t.legend_i
+                        .as_deref()
+                        .map(sanitize)
+                        .unwrap_or_else(|| "In".into())
+                })
+                .collect(),
+            legend_o: cfg
+                .targets
+                .iter()
+                .map(|t| {
+                    t.legend_o
+                        .as_deref()
+                        .map(sanitize)
+                        .unwrap_or_else(|| "Out".into())
+                })
+                .collect(),
         }
     }
 
@@ -192,9 +246,10 @@ pub fn view(cfg: &std::sync::Arc<Config>) -> std::sync::Arc<View> {
     static CACHE: Mutex<Option<(Arc<Config>, Arc<View>)>> = Mutex::new(None);
     let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((k, v)) = c.as_ref()
-        && Arc::ptr_eq(k, cfg) {
-            return v.clone();
-        }
+        && Arc::ptr_eq(k, cfg)
+    {
+        return v.clone();
+    }
     let v = Arc::new(View::build(cfg));
     *c = Some((cfg.clone(), v.clone()));
     v
@@ -328,7 +383,9 @@ impl From<&linkscope_config::Thresholds> for ThresholdView {
             max_o: t.max_o.clone(),
             desc: t.desc.clone(),
             for_polls: t.for_polls,
-            programs: [&t.prog_i, &t.prog_o, &t.prog_ok_i, &t.prog_ok_o].iter().any(|p| p.is_some()),
+            programs: [&t.prog_i, &t.prog_o, &t.prog_ok_i, &t.prog_ok_o]
+                .iter()
+                .any(|p| p.is_some()),
             mail: t.mail_address.is_some(),
         }
     }
@@ -386,12 +443,22 @@ pub struct StatsText {
 }
 
 fn colours(t: &Target) -> Vec<Colour> {
-    t.colours.iter().map(|(n, r)| Colour { name: n.clone(), rgb: r.clone() }).collect()
+    t.colours
+        .iter()
+        .map(|(n, r)| Colour {
+            name: n.clone(),
+            rgb: r.clone(),
+        })
+        .collect()
 }
 
 fn letters(s: &str) -> Vec<&'static str> {
     let s = s.to_lowercase();
-    [("d", "day"), ("w", "week"), ("m", "month"), ("y", "year")].into_iter().filter(|(l, _)| s.contains(l)).map(|(_, n)| n).collect()
+    [("d", "day"), ("w", "week"), ("m", "month"), ("y", "year")]
+        .into_iter()
+        .filter(|(l, _)| s.contains(l))
+        .map(|(_, n)| n)
+        .collect()
 }
 
 pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveState) -> TargetRow {
@@ -413,7 +480,9 @@ pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveS
         title_html: view.title_html[ti].clone(),
         directory: t.directory.trim_end_matches('/').to_string(),
         status,
-        error: live.and_then(|l| l.error.as_deref()).map(|e| view.redact(e)),
+        error: live
+            .and_then(|l| l.error.as_deref())
+            .map(|e| view.redact(e)),
         last_poll: live.map(|l| l.last_poll),
         sys_name: live.and_then(|l| l.sys_name.clone()),
         uptime: live.and_then(|l| l.uptime.clone()),
@@ -429,8 +498,12 @@ pub(crate) fn row(cfg: &Config, view: &View, ti: usize, st: &crate::state::LiveS
         logscale: t.options.logscale,
         cur_in: live.and_then(|l| l.cur_in),
         cur_out: live.and_then(|l| l.cur_out),
-        cur_in_text: live.and_then(|l| l.cur_in).map(|v| fmt.fmi(v, t.max_bytes1 as f64)),
-        cur_out_text: live.and_then(|l| l.cur_out).map(|v| fmt.fmi(v, t.max_bytes2 as f64)),
+        cur_in_text: live
+            .and_then(|l| l.cur_in)
+            .map(|v| fmt.fmi(v, t.max_bytes1 as f64)),
+        cur_out_text: live
+            .and_then(|l| l.cur_out)
+            .map(|v| fmt.fmi(v, t.max_bytes2 as f64)),
         alerts: live.map(|l| l.alerts.clone()).unwrap_or_default(),
     }
 }
@@ -443,14 +516,19 @@ fn config(state: &SharedState) -> Result<std::sync::Arc<Config>, (StatusCode, St
         .unwrap_or_else(|e| e.into_inner())
         .config
         .clone()
-        .ok_or((StatusCode::SERVICE_UNAVAILABLE, "configuration not loaded yet".into()))
+        .ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration not loaded yet".into(),
+        ))
 }
 
 pub async fn summary(State(state): State<SharedState>) -> ApiResult<Summary> {
     let cfg = config(&state)?;
     let st = state.read().unwrap_or_else(|e| e.into_inner());
     let v = view(&cfg);
-    let rows: Vec<Status> = (0..cfg.targets.len()).map(|i| row(&cfg, &v, i, &st).status).collect();
+    let rows: Vec<Status> = (0..cfg.targets.len())
+        .map(|i| row(&cfg, &v, i, &st).status)
+        .collect();
     Ok(Json(Summary {
         version: env!("CARGO_PKG_VERSION"),
         started: st.started,
@@ -458,11 +536,18 @@ pub async fn summary(State(state): State<SharedState>) -> ApiResult<Summary> {
         cycles: st.cycles,
         last_cycle: st.last_cycle.clone(),
         interval_secs: cfg.global.interval_secs,
-        config_name: cfg.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        config_name: cfg
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         warnings: st.warnings.iter().map(|w| v.redact(w)).collect(),
         targets_total: rows.len(),
         targets_ok: rows.iter().filter(|s| **s == Status::Ok).count(),
-        targets_error: rows.iter().filter(|s| matches!(s, Status::Error | Status::Stale | Status::Warn)).count(),
+        targets_error: rows
+            .iter()
+            .filter(|s| matches!(s, Status::Error | Status::Stale | Status::Warn))
+            .count(),
         targets_warn: rows.iter().filter(|s| **s == Status::Warn).count(),
         targets_failed: rows.iter().filter(|s| **s == Status::Error).count(),
         targets_stale: rows.iter().filter(|s| **s == Status::Stale).count(),
@@ -474,17 +559,31 @@ pub async fn targets(State(state): State<SharedState>) -> ApiResult<Vec<TargetRo
     let cfg = config(&state)?;
     let st = state.read().unwrap_or_else(|e| e.into_inner());
     let v = view(&cfg);
-    Ok(Json((0..cfg.targets.len()).map(|i| row(&cfg, &v, i, &st)).collect()))
+    Ok(Json(
+        (0..cfg.targets.len())
+            .map(|i| row(&cfg, &v, i, &st))
+            .collect(),
+    ))
 }
 
 fn find<'a>(cfg: &'a Config, name: &str) -> Result<&'a Target, (StatusCode, String)> {
-    cfg.targets.iter().find(|t| t.name == name).ok_or((StatusCode::NOT_FOUND, format!("no target named {name}")))
+    cfg.targets
+        .iter()
+        .find(|t| t.name == name)
+        .ok_or((StatusCode::NOT_FOUND, format!("no target named {name}")))
 }
 
-pub async fn target(State(state): State<SharedState>, Path(name): Path<String>) -> ApiResult<TargetDetail> {
+pub async fn target(
+    State(state): State<SharedState>,
+    Path(name): Path<String>,
+) -> ApiResult<TargetDetail> {
     let cfg = config(&state)?;
     let t = find(&cfg, &name)?;
-    let ti = cfg.targets.iter().position(|x| x.name == t.name).unwrap_or(0);
+    let ti = cfg
+        .targets
+        .iter()
+        .position(|x| x.name == t.name)
+        .unwrap_or(0);
     let view = view(&cfg);
     let st = state.read().unwrap_or_else(|e| e.into_inner());
     let suppressed = letters(&t.suppress);
@@ -494,8 +593,14 @@ pub async fn target(State(state): State<SharedState>, Path(name): Path<String>) 
         page_top_html: t.page_top.as_deref().map(sanitize).unwrap_or_default(),
         page_foot_html: t.page_foot.as_deref().map(sanitize).unwrap_or_default(),
         y_legend: t.y_legend.clone().unwrap_or_default(),
-        legends: t.legend.clone().map(|l| l.map(|s| sanitize(&s)).unwrap_or_default()),
-        periods: ["day", "week", "month", "year"].into_iter().filter(|p| !suppressed.contains(p)).collect(),
+        legends: t
+            .legend
+            .clone()
+            .map(|l| l.map(|s| sanitize(&s)).unwrap_or_default()),
+        periods: ["day", "week", "month", "year"]
+            .into_iter()
+            .filter(|p| !suppressed.contains(p))
+            .collect(),
         with_peak: letters(&t.with_peak),
         unscaled: letters(&t.unscaled),
         growright: t.options.growright,
@@ -522,7 +627,11 @@ pub struct SeriesQuery {
     pub maxx: Option<usize>,
 }
 
-pub async fn series(State(state): State<SharedState>, Path(name): Path<String>, Query(q): Query<SeriesQuery>) -> ApiResult<Series> {
+pub async fn series(
+    State(state): State<SharedState>,
+    Path(name): Path<String>,
+    Query(q): Query<SeriesQuery>,
+) -> ApiResult<Series> {
     let cfg = config(&state)?;
     let t = find(&cfg, &name)?.clone();
     let (period, pname) = match q.period.as_deref().unwrap_or("day") {
@@ -540,13 +649,17 @@ pub async fn series(State(state): State<SharedState>, Path(name): Path<String>, 
     // Reading and summarizing a log is the costliest request (up to 4 MB parsed): a few at a
     // time, so a flood of them waits instead of taking every blocking thread and the CPU.
     static SERIES: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
-    let _turn = SERIES.acquire().await.map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "shutting down".to_string()))?;
+    let _turn = SERIES
+        .acquire()
+        .await
+        .map_err(|_| (StatusCode::SERVICE_UNAVAILABLE, "shutting down".to_string()))?;
     let res = tokio::task::spawn_blocking(move || {
         let path = dir.join(format!("{}.log", t.name));
         if !path.exists() {
             return Err((StatusCode::NOT_FOUND, "no data collected yet".to_string()));
         }
-        let log = RateLog::load(&dir, &t.name, now()).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let log = RateLog::load(&dir, &t.name, now())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         // Graph time is the last update, like rateup drawing right after it.
         let at = log.last_time();
         let opts = SummaryOpts {
@@ -559,7 +672,17 @@ pub async fn series(State(state): State<SharedState>, Path(name): Path<String>, 
             dorelpercent: t.options.dorelpercent,
         };
         let s = log.summarize(at, period, &opts);
-        let mut points: Vec<Point> = s.points.iter().map(|p| Point { t: p.time, r#in: p.r#in, out: p.out, in_max: p.in_max, out_max: p.out_max }).collect();
+        let mut points: Vec<Point> = s
+            .points
+            .iter()
+            .map(|p| Point {
+                t: p.time,
+                r#in: p.r#in,
+                out: p.out,
+                in_max: p.in_max,
+                out_max: p.out_max,
+            })
+            .collect();
         points.reverse();
         let (m1, m2) = (t.max_bytes1 as f64, t.max_bytes2 as f64);
         let text = StatsText {
@@ -606,15 +729,29 @@ mod tests {
 
     #[test]
     fn communities_are_masked() {
-        assert_eq!(mask_communities("2:s3cret@r1:161::::2 + #Gi0/1:p\\@ss@r2"), "2:•••@r1:161::::2 + #Gi0/1:•••@r2");
-        assert_eq!(mask_communities("ifInErrors.1&ifOutErrors.1:pub@h"), "ifInErrors.1&ifOutErrors.1:•••@h");
+        assert_eq!(
+            mask_communities("2:s3cret@r1:161::::2 + #Gi0/1:p\\@ss@r2"),
+            "2:•••@r1:161::::2 + #Gi0/1:•••@r2"
+        );
+        assert_eq!(
+            mask_communities("ifInErrors.1&ifOutErrors.1:pub@h"),
+            "ifInErrors.1&ifOutErrors.1:•••@h"
+        );
     }
 
     #[test]
     fn sanitizer_keeps_structure_drops_script() {
-        let s = sanitize("<h1 onclick=x>Hi</h1><script>alert(1)</script><table><tr><td style='x'>a</td></tr></table><a href='javascript:x'>l</a><img src=x onerror=y>");
+        let s = sanitize(
+            "<h1 onclick=x>Hi</h1><script>alert(1)</script><table><tr><td style='x'>a</td></tr></table><a href='javascript:x'>l</a><img src=x onerror=y>",
+        );
         assert!(s.contains("<h1>Hi</h1>"));
-        assert!(!s.contains("script") && !s.contains("onclick") && !s.contains("style") && !s.contains("onerror") && !s.contains("javascript"));
+        assert!(
+            !s.contains("script")
+                && !s.contains("onclick")
+                && !s.contains("style")
+                && !s.contains("onerror")
+                && !s.contains("javascript")
+        );
         assert!(s.contains("<td>a</td>"));
     }
 }

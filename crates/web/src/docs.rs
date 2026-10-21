@@ -79,12 +79,21 @@ impl Manual {
 
 /// `SUMMARY.md`: its first `# ` heading is the manual's title, each `- [Title](page.md)` a page.
 fn summary(text: &str) -> (String, Vec<PageRef>) {
-    let title = text.lines().find_map(|l| l.strip_prefix("# ")).unwrap_or("LinkScope").trim().to_owned();
-    let item = regex::Regex::new(r"^\s*[-*]\s*\[([^\]]+)\]\(([^)#\s]+)\.md\)\s*$").expect("a valid pattern");
+    let title = text
+        .lines()
+        .find_map(|l| l.strip_prefix("# "))
+        .unwrap_or("LinkScope")
+        .trim()
+        .to_owned();
+    let item = regex::Regex::new(r"^\s*[-*]\s*\[([^\]]+)\]\(([^)#\s]+)\.md\)\s*$")
+        .expect("a valid pattern");
     let pages = text
         .lines()
         .filter_map(|l| item.captures(l))
-        .map(|c| PageRef { slug: c[2].trim_start_matches("./").to_owned(), title: c[1].trim().to_owned() })
+        .map(|c| PageRef {
+            slug: c[2].trim_start_matches("./").to_owned(),
+            title: c[1].trim().to_owned(),
+        })
         .collect();
     (title, pages)
 }
@@ -118,15 +127,46 @@ fn link(dest: &str, lang: &str, slugs: &HashSet<&str>) -> Option<String> {
     if dest.contains("://") || dest.starts_with('/') || dest.starts_with('#') {
         return None;
     }
-    let (file, frag) = dest.split_once('#').map_or((dest, None), |(f, h)| (f, Some(h)));
+    let (file, frag) = dest
+        .split_once('#')
+        .map_or((dest, None), |(f, h)| (f, Some(h)));
     let slug = file.trim_start_matches("./").strip_suffix(".md")?;
-    slugs.contains(slug).then(|| format!("/docs/{lang}/{slug}{}", frag.map(|h| format!("#{h}")).unwrap_or_default()))
+    slugs.contains(slug).then(|| {
+        format!(
+            "/docs/{lang}/{slug}{}",
+            frag.map(|h| format!("#{h}")).unwrap_or_default()
+        )
+    })
 }
 
 /// The HTML the manual may contain.
 fn clean(html: &str) -> String {
     let tags: HashSet<&str> = [
-        "h1", "h2", "h3", "h4", "p", "br", "hr", "b", "i", "em", "strong", "del", "code", "pre", "blockquote", "table", "thead", "tbody", "tr", "td", "th", "ul", "ol", "li", "a",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "p",
+        "br",
+        "hr",
+        "b",
+        "i",
+        "em",
+        "strong",
+        "del",
+        "code",
+        "pre",
+        "blockquote",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "td",
+        "th",
+        "ul",
+        "ol",
+        "li",
+        "a",
     ]
     .into_iter()
     .collect();
@@ -134,7 +174,17 @@ fn clean(html: &str) -> String {
     ammonia::Builder::default()
         .tags(tags)
         .generic_attributes(HashSet::new())
-        .tag_attributes([("a", HashSet::from(["href"])), ("h2", ids.clone()), ("h3", ids.clone()), ("h4", ids), ("ol", HashSet::from(["start"]))].into_iter().collect())
+        .tag_attributes(
+            [
+                ("a", HashSet::from(["href"])),
+                ("h2", ids.clone()),
+                ("h3", ids.clone()),
+                ("h4", ids),
+                ("ol", HashSet::from(["start"])),
+            ]
+            .into_iter()
+            .collect(),
+        )
         .url_schemes(HashSet::from(["http", "https"]))
         .link_rel(Some("noopener noreferrer"))
         .clean(html)
@@ -143,8 +193,17 @@ fn clean(html: &str) -> String {
 
 /// One page, rendered: the `# ` heading is its title (the page shows it apart), the others get
 /// anchors, links between pages point into the UI.
-fn render(lang: &'static str, slug: &str, markdown: &str, slugs: &HashSet<&str>) -> (String, String, Vec<Heading>) {
-    let mut events: Vec<Event> = Parser::new_ext(markdown, Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH).collect();
+fn render(
+    lang: &'static str,
+    slug: &str,
+    markdown: &str,
+    slugs: &HashSet<&str>,
+) -> (String, String, Vec<Heading>) {
+    let mut events: Vec<Event> = Parser::new_ext(
+        markdown,
+        Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH,
+    )
+    .collect();
     let mut title = String::new();
     let mut headings = Vec::new();
     let mut seen = HashSet::new();
@@ -152,7 +211,9 @@ fn render(lang: &'static str, slug: &str, markdown: &str, slugs: &HashSet<&str>)
     while i < events.len() {
         if let Event::Start(Tag::Heading { level, .. }) = &events[i] {
             let level = *level;
-            let end = (i..events.len()).find(|j| matches!(events[*j], Event::End(TagEnd::Heading(_)))).unwrap_or(events.len() - 1);
+            let end = (i..events.len())
+                .find(|j| matches!(events[*j], Event::End(TagEnd::Heading(_))))
+                .unwrap_or(events.len() - 1);
             let text: String = events[i + 1..end]
                 .iter()
                 .filter_map(|e| match e {
@@ -167,7 +228,11 @@ fn render(lang: &'static str, slug: &str, markdown: &str, slugs: &HashSet<&str>)
             }
             let id = anchor(&text, &mut seen);
             if matches!(level, HeadingLevel::H2 | HeadingLevel::H3) {
-                headings.push(Heading { level: level as u8, id: id.clone(), text });
+                headings.push(Heading {
+                    level: level as u8,
+                    id: id.clone(),
+                    text,
+                });
             }
             if let Event::Start(Tag::Heading { id: slot, .. }) = &mut events[i] {
                 *slot = Some(CowStr::from(id));
@@ -176,9 +241,10 @@ fn render(lang: &'static str, slug: &str, markdown: &str, slugs: &HashSet<&str>)
             continue;
         }
         if let Event::Start(Tag::Link { dest_url, .. }) = &mut events[i]
-            && let Some(to) = link(dest_url, lang, slugs) {
-                *dest_url = CowStr::from(to);
-            }
+            && let Some(to) = link(dest_url, lang, slugs)
+        {
+            *dest_url = CowStr::from(to);
+        }
         i += 1;
     }
     let mut html = String::new();
@@ -193,11 +259,21 @@ fn build() -> Manual {
     let mut languages = Vec::new();
     let mut pages = Vec::new();
     for (code, name) in LANGUAGES {
-        let file = |f: &str| MANUAL.get_file(format!("{code}/{f}")).and_then(|f| f.contents_utf8());
-        let Some(list) = file("SUMMARY.md") else { continue };
+        let file = |f: &str| {
+            MANUAL
+                .get_file(format!("{code}/{f}"))
+                .and_then(|f| f.contents_utf8())
+        };
+        let Some(list) = file("SUMMARY.md") else {
+            continue;
+        };
         let (title, refs) = summary(list);
         let slugs: HashSet<&str> = refs.iter().map(|r| r.slug.as_str()).collect();
-        let present: Vec<PageRef> = refs.iter().filter(|r| file(&format!("{}.md", r.slug)).is_some()).cloned().collect();
+        let present: Vec<PageRef> = refs
+            .iter()
+            .filter(|r| file(&format!("{}.md", r.slug)).is_some())
+            .cloned()
+            .collect();
         for (n, r) in present.iter().enumerate() {
             let markdown = file(&format!("{}.md", r.slug)).unwrap_or_default();
             let (heading, html, headings) = render(code, &r.slug, markdown, &slugs);
@@ -205,16 +281,28 @@ fn build() -> Manual {
                 lang: code,
                 slug: r.slug.clone(),
                 // The list's title wins: it is what the contents show.
-                title: if r.title.is_empty() { heading } else { r.title.clone() },
+                title: if r.title.is_empty() {
+                    heading
+                } else {
+                    r.title.clone()
+                },
                 html,
                 headings,
                 prev: n.checked_sub(1).map(|p| present[p].clone()),
                 next: present.get(n + 1).cloned(),
             });
         }
-        languages.push(Language { code, name, title, pages: present });
+        languages.push(Language {
+            code,
+            name,
+            title,
+            pages: present,
+        });
     }
-    Manual { index: DocsIndex { languages }, pages }
+    Manual {
+        index: DocsIndex { languages },
+        pages,
+    }
 }
 
 /// The manual, rendered at first use.
@@ -229,8 +317,19 @@ pub async fn index() -> Json<DocsIndex> {
 }
 
 /// `GET /api/docs/{lang}/{page}`
-pub async fn page(Path((lang, slug)): Path<(String, String)>) -> Result<Json<DocPage>, (StatusCode, String)> {
-    manual().page(&lang, &slug).cloned().map(Json).ok_or_else(|| (StatusCode::NOT_FOUND, format!("no page {slug} in the manual ({lang})")))
+pub async fn page(
+    Path((lang, slug)): Path<(String, String)>,
+) -> Result<Json<DocPage>, (StatusCode, String)> {
+    manual()
+        .page(&lang, &slug)
+        .cloned()
+        .map(Json)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("no page {slug} in the manual ({lang})"),
+            )
+        })
 }
 
 #[cfg(test)]
@@ -239,12 +338,23 @@ mod tests {
 
     #[test]
     fn the_list_and_anchors_read_as_mdbook_writes_them() {
-        let (title, pages) = summary("# LinkScope manual\n\n- [Introduction](introduction.md)\n- [Alerts](./alerts.md)\n- not a page\n");
+        let (title, pages) = summary(
+            "# LinkScope manual\n\n- [Introduction](introduction.md)\n- [Alerts](./alerts.md)\n- not a page\n",
+        );
         assert_eq!(title, "LinkScope manual");
-        assert_eq!(pages.iter().map(|p| (p.slug.as_str(), p.title.as_str())).collect::<Vec<_>>(), [("introduction", "Introduction"), ("alerts", "Alerts")]);
+        assert_eq!(
+            pages
+                .iter()
+                .map(|p| (p.slug.as_str(), p.title.as_str()))
+                .collect::<Vec<_>>(),
+            [("introduction", "Introduction"), ("alerts", "Alerts")]
+        );
         let mut seen = HashSet::new();
         assert_eq!(anchor("Webhook", &mut seen), "webhook");
-        assert_eq!(anchor("The `ThreshFor[]` keyword", &mut seen), "the-threshfor-keyword");
+        assert_eq!(
+            anchor("The `ThreshFor[]` keyword", &mut seen),
+            "the-threshfor-keyword"
+        );
         assert_eq!(anchor("Webhook", &mut seen), "webhook-1");
     }
 
@@ -256,10 +366,30 @@ mod tests {
         assert_eq!(title, "Alerts");
         assert!(!html.contains("<h1"), "{html}");
         assert!(html.contains(r#"<h2 id="webhook">Webhook</h2>"#), "{html}");
-        assert!(html.contains(r#"<h3 id="the-body">The <code>body</code></h3>"#), "{html}");
-        assert!(html.contains(r#"href="/docs/en/install""#) && html.contains(r#"href="/docs/en/alerts#webhook""#), "{html}");
-        assert!(html.contains(r#"href="https://oss.oetiker.ch/mrtg/""#) && html.contains(r#"href="other.md""#), "{html}");
-        assert!(html.contains("<table>") && !html.contains("<script") && !html.contains("javascript:"), "{html}");
-        assert_eq!(headings.iter().map(|h| (h.level, h.id.as_str())).collect::<Vec<_>>(), [(2, "webhook"), (3, "the-body")]);
+        assert!(
+            html.contains(r#"<h3 id="the-body">The <code>body</code></h3>"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"href="/docs/en/install""#)
+                && html.contains(r#"href="/docs/en/alerts#webhook""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"href="https://oss.oetiker.ch/mrtg/""#)
+                && html.contains(r#"href="other.md""#),
+            "{html}"
+        );
+        assert!(
+            html.contains("<table>") && !html.contains("<script") && !html.contains("javascript:"),
+            "{html}"
+        );
+        assert_eq!(
+            headings
+                .iter()
+                .map(|h| (h.level, h.id.as_str()))
+                .collect::<Vec<_>>(),
+            [(2, "webhook"), (3, "the-body")]
+        );
     }
 }

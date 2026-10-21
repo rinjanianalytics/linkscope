@@ -101,7 +101,8 @@ async fn an_interface_target_and_a_gauge() {
     }
     // A gauge is a value, not a counter, and per-minute rates become per second.
     // MRTG reads the explicit OIDs as interface 1.
-    let g = r#"target="temp",directory="",source="snmp",host="10.0.0.2",interface="If:1",ifindex="""#;
+    let g =
+        r#"target="temp",directory="",source="snmp",host="10.0.0.2",interface="If:1",ifindex="""#;
     assert!(
         m.contains(&format!(
             "linkscope_target_value{{{g},direction=\"in\"}} 42"

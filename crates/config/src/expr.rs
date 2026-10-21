@@ -13,8 +13,8 @@
 
 use std::str::FromStr;
 
-use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use bigdecimal::num_bigint::BigInt;
+use bigdecimal::{BigDecimal, RoundingMode, Zero};
 use serde::Serialize;
 
 /// Maximum nesting depth accepted when parsing (guards the stack).
@@ -95,12 +95,21 @@ impl Expr {
         // Nesting is limited by MAX_DEPTH, but a chain (`1+1+1+...`) builds a tree as deep as it
         // is long, and evaluating or dropping it recurses: the token count bounds every shape.
         if toks.len() > MAX_TOKENS {
-            return Err(format!("Target expression is longer than {MAX_TOKENS} parts"));
+            return Err(format!(
+                "Target expression is longer than {MAX_TOKENS} parts"
+            ));
         }
-        let mut p = Parser { toks, pos: 0, depth: 0 };
+        let mut p = Parser {
+            toks,
+            pos: 0,
+            depth: 0,
+        };
         let e = p.expr(0)?;
         if p.pos != p.toks.len() {
-            return Err(format!("unexpected {:?} in Target expression", p.toks[p.pos]));
+            return Err(format!(
+                "unexpected {:?} in Target expression",
+                p.toks[p.pos]
+            ));
         }
         Ok(e)
     }
@@ -158,7 +167,10 @@ impl Expr {
     /// non-numbers and values over 190 characters, round half to even to an
     /// integer, drop a leading `+`. Returns the decimal string handed to the
     /// rate engine.
-    pub fn eval_value(&self, get: &dyn Fn(usize) -> Option<BigDecimal>) -> Result<String, EvalError> {
+    pub fn eval_value(
+        &self,
+        get: &dyn Fn(usize) -> Option<BigDecimal>,
+    ) -> Result<String, EvalError> {
         let v = self.eval(get)?;
         // Judged before it is printed: `1e999999999` prints as a billion digits.
         if !within_width(&v) {
@@ -208,7 +220,11 @@ fn pow(x: &BigDecimal, y: &BigDecimal) -> Result<BigDecimal, EvalError> {
     let yf: f64 = y.to_string().parse().map_err(|_| EvalError::NotANumber)?;
     let r = xf.powf(yf);
     if !r.is_finite() {
-        return Err(if xf == 0.0 { EvalError::DivisionByZero } else { EvalError::NotANumber });
+        return Err(if xf == 0.0 {
+            EvalError::DivisionByZero
+        } else {
+            EvalError::NotANumber
+        });
     }
     BigDecimal::from_str(&format!("{r}")).map_err(|_| EvalError::NotANumber)
 }
@@ -247,7 +263,9 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
             b'$' if s[i..].starts_with(PH) => {
                 let rest = &s[i + PH.len()..];
                 let end = rest.find("]{$mode}").ok_or("malformed source reference")?;
-                let idx: usize = rest[..end].parse().map_err(|_| "malformed source reference")?;
+                let idx: usize = rest[..end]
+                    .parse()
+                    .map_err(|_| "malformed source reference")?;
                 out.push(Tok::Src(idx));
                 i += PH.len() + end + "]{$mode}".len();
             }
@@ -288,7 +306,10 @@ fn unsupported(s: &str, at: usize) -> String {
 /// separators, `0x` hex, `0b` binary, and leading-zero octal.
 fn lex_number(s: &str) -> Result<(BigDecimal, usize), String> {
     let b = s.as_bytes();
-    let radix_lit = |prefix_len: usize, radix: u32, valid: fn(u8) -> bool| -> Result<(BigDecimal, usize), String> {
+    let radix_lit = |prefix_len: usize,
+                     radix: u32,
+                     valid: fn(u8) -> bool|
+     -> Result<(BigDecimal, usize), String> {
         let mut j = prefix_len;
         while j < b.len() && (valid(b[j]) || b[j] == b'_') {
             j += 1;
@@ -372,7 +393,9 @@ impl Parser {
         }
         let mut lhs = self.unary()?;
         while let Some(Tok::Op(op)) = self.peek().cloned() {
-            let Some((prec, right)) = Self::bin_prec(op) else { break };
+            let Some((prec, right)) = Self::bin_prec(op) else {
+                break;
+            };
             if prec < min {
                 break;
             }
@@ -453,7 +476,11 @@ impl Parser {
                     return Err(format!("{f} needs parentheses, e.g. {f}(...)"));
                 }
                 let inner = self.primary()?;
-                Ok(if f == "int" { Expr::Int(Box::new(inner)) } else { Expr::Abs(Box::new(inner)) })
+                Ok(if f == "int" {
+                    Expr::Int(Box::new(inner))
+                } else {
+                    Expr::Abs(Box::new(inner))
+                })
             }
             Some(t) => Err(format!("unexpected {t:?} in Target expression")),
             None => Err("Target expression ends unexpectedly".into()),
@@ -468,10 +495,25 @@ mod tests {
     #[test]
     fn a_value_is_judged_by_its_width_without_printing_it() {
         // MRTG's number check lets an exponent through (its `.` is unescaped); the width decides.
-        for ok in ["0", "123", "1e5", "-1e5", "18446744073709551615", "0.5", &"9".repeat(190)] {
+        for ok in [
+            "0",
+            "123",
+            "1e5",
+            "-1e5",
+            "18446744073709551615",
+            "0.5",
+            &"9".repeat(190),
+        ] {
             assert!(bounded_decimal(ok).is_some(), "{ok}");
         }
-        for wide in ["1e999999999", "-1e999999999", "1e-999999999", "1e191", &"9".repeat(191), "1e99999999999999"] {
+        for wide in [
+            "1e999999999",
+            "-1e999999999",
+            "1e-999999999",
+            "1e191",
+            &"9".repeat(191),
+            "1e99999999999999",
+        ] {
             assert!(bounded_decimal(wide).is_none(), "{wide}");
         }
         // A chain as long as it likes is refused before it is built (it overflowed the stack).
@@ -480,13 +522,19 @@ mod tests {
         assert!(Expr::compile(&vec!["1"; 300].join("+")).is_ok());
         // A literal that wide is refused when the config is read; a wide result is no number.
         assert!(Expr::compile("1e999999999").is_err());
-        assert_eq!(ev(" $target->[0]{$mode} * $target->[0]{$mode} ", &["1e150"]), Err(EvalError::NotANumber));
+        assert_eq!(
+            ev(" $target->[0]{$mode} * $target->[0]{$mode} ", &["1e150"]),
+            Err(EvalError::NotANumber)
+        );
         assert_eq!(ev(" $target->[0]{$mode} * 8", &["1e5"]).unwrap(), "800000");
     }
 
     fn ev(s: &str, vals: &[&str]) -> Result<String, EvalError> {
         let e = Expr::compile(s).unwrap();
-        let v: Vec<BigDecimal> = vals.iter().map(|x| BigDecimal::from_str(x).unwrap()).collect();
+        let v: Vec<BigDecimal> = vals
+            .iter()
+            .map(|x| BigDecimal::from_str(x).unwrap())
+            .collect();
         e.eval_value(&|i| v.get(i).cloned())
     }
 
@@ -504,8 +552,14 @@ mod tests {
     #[test]
     fn sources_and_big_counters() {
         let s = " $target->[0]{$mode}  +  $target->[1]{$mode} ";
-        assert_eq!(ev(s, &["18446744073709551615", "18446744073709551615"]).unwrap(), "36893488147419103230");
-        assert_eq!(ev(" $target->[0]{$mode} * 8", &["123456789012345678901"]).unwrap(), "987654312098765431208");
+        assert_eq!(
+            ev(s, &["18446744073709551615", "18446744073709551615"]).unwrap(),
+            "36893488147419103230"
+        );
+        assert_eq!(
+            ev(" $target->[0]{$mode} * 8", &["123456789012345678901"]).unwrap(),
+            "987654312098765431208"
+        );
     }
 
     #[test]
@@ -518,13 +572,25 @@ mod tests {
 
     #[test]
     fn undefined_and_div_zero() {
-        assert_eq!(ev(" $target->[3]{$mode} ", &["1"]), Err(EvalError::Undefined(3)));
+        assert_eq!(
+            ev(" $target->[3]{$mode} ", &["1"]),
+            Err(EvalError::Undefined(3))
+        );
         assert_eq!(ev("1/0", &[]), Err(EvalError::DivisionByZero));
     }
 
     #[test]
     fn rejects_perl_code() {
-        for bad in ["system('id')", "`id`", "$x", "1; unlink 'x'", "1 x 3", "1 . 2", "$target->[0]{$mode} or die", "qx(id)"] {
+        for bad in [
+            "system('id')",
+            "`id`",
+            "$x",
+            "1; unlink 'x'",
+            "1 x 3",
+            "1 . 2",
+            "$target->[0]{$mode} or die",
+            "qx(id)",
+        ] {
             assert!(Expr::compile(bad).is_err(), "{bad} should be rejected");
         }
         let deep = "(".repeat(5000) + "1" + &")".repeat(5000);

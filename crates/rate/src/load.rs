@@ -4,7 +4,10 @@
 
 use crate::cnum::{ScanInt, is_c_space, scan_int};
 use crate::history::{Hist, HistBuf};
-use crate::{DAY_COUNT, DAY_SAMPLE, MONTH_COUNT, MONTH_SAMPLE, WEEK_COUNT, WEEK_SAMPLE, YEAR_COUNT, YEAR_SAMPLE};
+use crate::{
+    DAY_COUNT, DAY_SAMPLE, MONTH_COUNT, MONTH_SAMPLE, WEEK_COUNT, WEEK_SAMPLE, YEAR_COUNT,
+    YEAR_SAMPLE,
+};
 
 /// Width of the `%199s` conversions for the last in/out strings.
 const LAST_WIDTH: usize = 199;
@@ -42,7 +45,10 @@ impl Loader {
             last_time: 0,
             last_in: Vec::new(),
             last_out: Vec::new(),
-            hist: HistBuf { entries: Vec::with_capacity(crate::MAX_HISTORY + 1), valid: 0 },
+            hist: HistBuf {
+                entries: Vec::with_capacity(crate::MAX_HISTORY + 1),
+                valid: 0,
+            },
             lasttime: 0,
             rd: [0; 5],
         }
@@ -66,7 +72,10 @@ impl Loader {
             // fgets: up to and including '\n', at most 255 bytes.
             let rest = &data[pos..];
             let lim = rest.len().min(FGETS_MAX);
-            let len = rest[..lim].iter().position(|&b| b == b'\n').map_or(lim, |i| i + 1);
+            let len = rest[..lim]
+                .iter()
+                .position(|&b| b == b'\n')
+                .map_or(lim, |i| i + 1);
             let line = &rest[..len];
             pos += len;
             // sscanf stops at an embedded NUL.
@@ -118,9 +127,13 @@ impl Loader {
                 *pos = p;
             }
         }
-        let Some(tok) = scan_str(data, pos) else { return 1 };
+        let Some(tok) = scan_str(data, pos) else {
+            return 1;
+        };
         self.last_in = tok;
-        let Some(tok) = scan_str(data, pos) else { return 2 };
+        let Some(tok) = scan_str(data, pos) else {
+            return 2;
+        };
         self.last_out = tok;
         skip_ws(data, pos);
         3
@@ -145,7 +158,13 @@ impl Loader {
         ] {
             t = t / sample * sample;
             for _ in 0..count {
-                self.hist.set(idx, Hist { time: t, ..Hist::default() });
+                self.hist.set(
+                    idx,
+                    Hist {
+                        time: t,
+                        ..Hist::default()
+                    },
+                );
                 idx += 1;
                 t = t.wrapping_sub(sample);
             }

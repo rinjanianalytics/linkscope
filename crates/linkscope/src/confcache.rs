@@ -23,8 +23,10 @@ pub const DEAD_HOST_SECS: u64 = 300;
 /// MRTG's `cleanhostkey`: drop the timeout/retries/backoff fields from
 /// `community@host:port:timeout:retries:backoff:version` and replace `:`.
 pub fn clean_host_key(host: &str) -> String {
-    static FULL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)))))$").unwrap());
-    static PART: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)?)?)?)$").unwrap());
+    static FULL: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)))))$").unwrap());
+    static PART: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(:\d*)(?:(:\d*)(?:(:\d*)(?:(:\d*)?)?)?)$").unwrap());
     let s = if FULL.is_match(host) {
         FULL.replace(host, "${1}${5}").into_owned()
     } else {
@@ -64,7 +66,10 @@ impl ConfCache {
             }
             Ok(None) => return c,
             Err(e) => {
-                tracing::warn!("reading {}: {e}; starting with an empty cache", path.display());
+                tracing::warn!(
+                    "reading {}: {e}; starting with an empty cache",
+                    path.display()
+                );
                 return c;
             }
         };
@@ -72,11 +77,17 @@ impl ConfCache {
             if !line.contains('\t') {
                 continue;
             }
-            if line.split_whitespace().next().is_some_and(|w| w.ends_with(':')) {
+            if line
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w.ends_with(':'))
+            {
                 continue; // legacy lines
             }
             let mut f = line.split('\t');
-            let (Some(h), Some(m), Some(k)) = (f.next(), f.next(), f.next()) else { continue };
+            let (Some(h), Some(m), Some(k)) = (f.next(), f.next(), f.next()) else {
+                continue;
+            };
             let v = f.next().unwrap_or("");
             c.map
                 .entry(h.to_string())
@@ -110,7 +121,11 @@ impl ConfCache {
 
     /// `readfromcache`.
     pub fn read(&self, host: &str, method: &str, key: &str) -> Option<&str> {
-        self.map.get(&clean_host_key(host))?.get(method)?.get(key)?.as_deref()
+        self.map
+            .get(&clean_host_key(host))?
+            .get(method)?
+            .get(key)?
+            .as_deref()
     }
 
     /// `storeincache`: a conflicting second value turns the entry into `Dup`.
@@ -155,7 +170,11 @@ impl ConfCache {
 
 /// Render a binary MAC like MRTG: lowercase hex bytes joined by `-`.
 pub fn mac_string(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join("-")
+    bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 #[cfg(test)]
@@ -164,7 +183,10 @@ mod tests {
 
     #[test]
     fn clean_host_key_matches_mrtg() {
-        assert_eq!(clean_host_key("public@router:161:2:5:1:2"), "public@router_161_2");
+        assert_eq!(
+            clean_host_key("public@router:161:2:5:1:2"),
+            "public@router_161_2"
+        );
         assert_eq!(clean_host_key("public@router:161:2"), "public@router_161");
         assert_eq!(clean_host_key("public@router"), "public@router");
         assert_eq!(clean_host_key("public@router:::::2"), "public@router__2");

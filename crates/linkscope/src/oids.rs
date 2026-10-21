@@ -22,7 +22,10 @@ pub struct OidResolver {
 
 impl Default for OidResolver {
     fn default() -> Self {
-        let mut r = OidResolver { names: HashMap::new(), lower: HashMap::new() };
+        let mut r = OidResolver {
+            names: HashMap::new(),
+            lower: HashMap::new(),
+        };
         for (n, o) in OIDS {
             r.insert(n, o);
         }
@@ -33,7 +36,9 @@ impl Default for OidResolver {
 impl OidResolver {
     fn insert(&mut self, name: &str, oid: &str) {
         self.names.insert(name.to_string(), oid.to_string());
-        self.lower.entry(name.to_lowercase()).or_insert_with(|| oid.to_string());
+        self.lower
+            .entry(name.to_lowercase())
+            .or_insert_with(|| oid.to_string());
     }
 
     /// Resolve `spec` to a numeric OID string without a leading dot.
@@ -49,13 +54,18 @@ impl OidResolver {
         let base = if head.bytes().all(|b| b.is_ascii_digit()) {
             head.to_string()
         } else {
-            self.names.get(head).or_else(|| self.lower.get(&head.to_lowercase()))?.clone()
+            self.names
+                .get(head)
+                .or_else(|| self.lower.get(&head.to_lowercase()))?
+                .clone()
         };
         let full = match rest {
             Some(r) => format!("{base}.{r}"),
             None => base,
         };
-        full.split('.').all(|c| !c.is_empty() && c.bytes().all(|b| b.is_ascii_digit())).then_some(full)
+        full.split('.')
+            .all(|c| !c.is_empty() && c.bytes().all(|b| b.is_ascii_digit()))
+            .then_some(full)
     }
 
     /// Parse `OBJECT IDENTIFIER` / `OBJECT-TYPE` assignments from a MIB file
@@ -64,7 +74,11 @@ impl OidResolver {
     pub fn load_mib(&mut self, path: &Path) -> std::io::Result<usize> {
         let text = std::fs::read_to_string(path)?;
         // Strip ASN.1 comments ("--" to end of line).
-        let text: String = text.lines().map(|l| l.split("--").next().unwrap_or("")).collect::<Vec<_>>().join("\n");
+        let text: String = text
+            .lines()
+            .map(|l| l.split("--").next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
         let re = Regex::new(
             r"(?s)([A-Za-z][-A-Za-z0-9]*)\s+(?:OBJECT\s+IDENTIFIER|OBJECT-TYPE|OBJECT-IDENTITY|MODULE-IDENTITY|NOTIFICATION-TYPE|OBJECT-GROUP)\b.*?::=\s*\{\s*([A-Za-z][-A-Za-z0-9]*)\s+([0-9]+)\s*\}",
         )
@@ -73,9 +87,19 @@ impl OidResolver {
             .captures_iter(&text)
             .map(|c| (c[1].to_string(), c[2].to_string(), c[3].to_string()))
             .collect();
-        let roots = [("iso", "1"), ("org", "1.3"), ("dod", "1.3.6"), ("internet", "1.3.6.1"), ("mib-2", "1.3.6.1.2.1"), ("enterprises", "1.3.6.1.4.1"), ("private", "1.3.6.1.4")];
+        let roots = [
+            ("iso", "1"),
+            ("org", "1.3"),
+            ("dod", "1.3.6"),
+            ("internet", "1.3.6.1"),
+            ("mib-2", "1.3.6.1.2.1"),
+            ("enterprises", "1.3.6.1.4.1"),
+            ("private", "1.3.6.1.4"),
+        ];
         for (n, o) in roots {
-            self.names.entry(n.to_string()).or_insert_with(|| o.to_string());
+            self.names
+                .entry(n.to_string())
+                .or_insert_with(|| o.to_string());
         }
         let mut added = 0;
         loop {
@@ -102,7 +126,10 @@ impl OidResolver {
 
 /// Parse a dotted numeric OID into components.
 pub fn parse_numeric(oid: &str) -> Option<Vec<u64>> {
-    oid.trim_start_matches('.').split('.').map(|c| c.parse().ok()).collect()
+    oid.trim_start_matches('.')
+        .split('.')
+        .map(|c| c.parse().ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -112,9 +139,15 @@ mod tests {
     #[test]
     fn resolves_like_snmp_util() {
         let r = OidResolver::default();
-        assert_eq!(r.resolve("ifHCInOctets.5").unwrap(), "1.3.6.1.2.1.31.1.1.1.6.5");
+        assert_eq!(
+            r.resolve("ifHCInOctets.5").unwrap(),
+            "1.3.6.1.2.1.31.1.1.1.6.5"
+        );
         assert_eq!(r.resolve("sysUptime").unwrap(), "1.3.6.1.2.1.1.3.0");
-        assert_eq!(r.resolve(".1.3.6.1.2.1.2.2.1.10.3").unwrap(), "1.3.6.1.2.1.2.2.1.10.3");
+        assert_eq!(
+            r.resolve(".1.3.6.1.2.1.2.2.1.10.3").unwrap(),
+            "1.3.6.1.2.1.2.2.1.10.3"
+        );
         assert_eq!(r.resolve("ifInOctets").unwrap(), "1.3.6.1.2.1.2.2.1.10");
         assert!(r.resolve("noSuchName.1").is_none());
         assert!(r.resolve("1.3.x").is_none());
