@@ -294,6 +294,9 @@ a minor version (semantic versioning before 1.0). `CHANGELOG.md` lists what chan
         binary is never public without its source. Checked without a login: the repository
         (license GPL-2.0), the release, and `docker pull` of `0.2.0` and `latest` (amd64 and arm64)
         running as `linkscope 0.2.0`.
+      - About on GitHub: the website https://rinjanianalytics.com and 14 topics (linkscope, rust,
+        snmp, snmpv3, mrtg, flowscope, akvorado, network-monitoring, bandwidth-monitoring,
+        prometheus, isp, netops, self-hosted, docker).
 
 Releasing again (2026-10-21: a release pipeline in GitHub Actions):
 bump the version and add its CHANGELOG section (with "Upgrading" when behavior changes), merge,
@@ -304,9 +307,21 @@ changelog. `.github/workflows/ci.yml` checks every pull request and every push t
 the tests on Rust 1.92.0 (the image's), and a build on 1.89 (`rust-version`). A pull request that
 changes the Dockerfile, and a manual run of Release, builds both images without pushing.
 
-- [ ] The first release through the pipeline. Its first push to GHCR proves the repository's
-      Actions may write the package (Package settings, Manage Actions access, the repository
-      with the Write role).
+- [x] CI and the release pipeline.
+      2026-10-21, PR #17 (`bf22df4`):
+      - Actions runs on the public repository (the billing block of the private PathScope
+        repositories does not apply), and CI passed on main after the merge.
+      - The release dry run built both images in 4.5 minutes.
+      - the owner gave the repository's Actions the Write role on the package.
+      - Only GitHub's own actions (`checkout`, `cache`), pinned by commit; the Docker steps are
+        plain commands. The token is read-only except in the publish job, which only a tag starts.
+      - The first run found a bug in 0.2.0: `aes` 0.9.3, which `async-snmp` brings in, needs Rust
+        1.89, so `rust-version` 1.88 had been wrong since #12. The minimum is now 1.89 in
+        `Cargo.toml`, CI, the manual (EN, ID) and the changelog. The v0.2.0 release notes were
+        corrected too. The image builds with 1.92 and was never affected.
+      - No rustfmt check: the code has never been formatted with it (605 places differ).
+- [ ] The first release through the pipeline: its first push to GHCR with the repository's own
+      token.
 
 ## Open decisions
 
@@ -314,5 +329,8 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
 - Whether the manual also gets a public website (an mdBook build of `docs/manual`, for example on
   rinjanianalytics.com). The repository is public, and GitHub already shows the pages.
+- Requiring CI to pass before anything merges to main (branch protection). It needs no change to
+  the workflows, only the repository's settings.
+- Formatting the code with rustfmt once, in a commit of its own, and then checking it in CI.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
