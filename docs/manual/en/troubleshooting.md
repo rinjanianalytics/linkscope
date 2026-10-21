@@ -29,6 +29,21 @@ After each cycle the daemon logs one line:
 cycle: 120 targets in 1830 ms (2 failed, 0 log write failures)
 ```
 
+## The container cannot read its configuration
+
+`cannot read /etc/linkscope/mrtg.cfg: Permission denied` in `docker compose logs` means the
+container's account (uid 10001) cannot read the file you mounted. Give it to root, readable by
+the container's group:
+
+```sh
+sudo chown root:10001 mrtg.cfg
+sudo chmod 640 mrtg.cfg
+docker compose restart
+```
+
+A file owned by your own account is refused even when it is readable, because LinkScope loads only
+a configuration that root or its own account owns (see [Run with Docker](install.md#run-with-docker)).
+
 ## The configuration is refused because of its permissions
 
 LinkScope refuses a configuration file, or a file it includes, that another
