@@ -24,6 +24,34 @@ pub fn create_new(path: &Path, mode: u32) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
+/// Mode of the state files LinkScope keeps beside its config (`.ok`, `.alerts`): owner only. The
+/// `.ok` cache keys each device by its SNMP community, as MRTG's does, so it is as secret as the
+/// config (2026-10-21: it was written 0644).
+pub const STATE_MODE: u32 = 0o600;
+
+/// Largest state file read (the `.ok` cache keeps at most 100,000 rows per method).
+pub const MAX_STATE_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Read a state file as the logs are read: no symlink followed, no blocking on a FIFO, regular
+/// files only, at most `max` bytes. `Ok(None)` when it does not exist. Also says whether others
+/// than the owner may read it (so it is written again with [`STATE_MODE`]).
+pub fn read_state(path: &Path, max: u64) -> std::io::Result<Option<(Vec<u8>, bool)>> {
+    use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
+    let f = match OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let meta = f.metadata()?;
+    if !meta.is_file() {
+        return Err(std::io::Error::other("not a regular file"));
+    }
+    let mut buf = Vec::new();
+    f.take(max).read_to_end(&mut buf)?;
+    Ok(Some((buf, meta.permissions().mode() & 0o077 != 0)))
+}
+
 fn temp_name(path: &Path) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);

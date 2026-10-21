@@ -19,6 +19,8 @@ use serde::Serialize;
 
 /// Maximum nesting depth accepted when parsing (guards the stack).
 pub const MAX_DEPTH: usize = 200;
+/// Most tokens in a Target expression (a real one has a few dozen).
+pub const MAX_TOKENS: usize = 1000;
 
 /// Traffic direction, MRTG's `$mode` (`_IN_` / `_OUT_`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
@@ -89,6 +91,11 @@ impl Expr {
         let toks = lex(rewritten)?;
         if toks.is_empty() {
             return Err("empty Target expression".into());
+        }
+        // Nesting is limited by MAX_DEPTH, but a chain (`1+1+1+...`) builds a tree as deep as it
+        // is long, and evaluating or dropping it recurses: the token count bounds every shape.
+        if toks.len() > MAX_TOKENS {
+            return Err(format!("Target expression is longer than {MAX_TOKENS} parts"));
         }
         let mut p = Parser { toks, pos: 0, depth: 0 };
         let e = p.expr(0)?;
@@ -467,6 +474,10 @@ mod tests {
         for wide in ["1e999999999", "-1e999999999", "1e-999999999", "1e191", &"9".repeat(191), "1e99999999999999"] {
             assert!(bounded_decimal(wide).is_none(), "{wide}");
         }
+        // A chain as long as it likes is refused before it is built (it overflowed the stack).
+        let chain = vec!["1"; 2000].join("+");
+        assert!(Expr::compile(&chain).is_err());
+        assert!(Expr::compile(&vec!["1"; 300].join("+")).is_ok());
         // A literal that wide is refused when the config is read; a wide result is no number.
         assert!(Expr::compile("1e999999999").is_err());
         assert_eq!(ev(" $target->[0]{$mode} * $target->[0]{$mode} ", &["1e150"]), Err(EvalError::NotANumber));

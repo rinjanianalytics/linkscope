@@ -48,8 +48,10 @@ sudo chown root:mrtg /etc/mrtg/mrtg.cfg
 sudo chmod 640 /etc/mrtg/mrtg.cfg
 ```
 
-Berkas harus dimiliki oleh root atau oleh user yang menjalankan LinkScope, dan
-direktorinya tidak boleh dapat ditulis semua orang tanpa sticky bit. Lihat
+Berkas harus dimiliki oleh root atau oleh user yang menjalankan LinkScope.
+Setiap direktori di jalurnya harus milik root atau user itu dan tidak boleh
+dapat ditulis pihak lain, atau oleh grup selain milik root atau milik user itu
+sendiri, kecuali direktori sticky. Pesannya menyebut direktori tersebut. Lihat
 [Izin berkas](install.md#izin-berkas). `--allow-insecure-config` mengubah
 kesalahan itu menjadi peringatan, hanya untuk pengujian.
 
@@ -171,6 +173,9 @@ memerlukan restart.
   sudah dipakai.
 - Antarmuka web tidak memiliki login. Jika Anda mengaksesnya melalui reverse
   proxy, periksa autentikasi proxy itu dan alamat upstream-nya.
+- `421` dan "does not answer to this host name" berarti Anda membukanya dengan
+  nama yang tidak ada di `WebHosts:`. Tambahkan nama itu (seperti yang
+  ditampilkan browser, tanpa port) lalu muat ulang konfigurasi.
 
 ## Kode keluar dari cron
 

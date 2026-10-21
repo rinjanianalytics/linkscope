@@ -46,8 +46,10 @@ sudo chown root:mrtg /etc/mrtg/mrtg.cfg
 sudo chmod 640 /etc/mrtg/mrtg.cfg
 ```
 
-The file must be owned by root or by the user LinkScope runs as, and its
-directory must not be world-writable without the sticky bit. See
+The file must be owned by root or by the user LinkScope runs as. Every
+directory on the way to it must belong to root or that user and must not be
+writable by others, or by a group other than root's or that user's own,
+unless it is sticky. The message names the directory. See
 [File permissions](install.md#file-permissions). `--allow-insecure-config`
 turns the error into a warning, for tests only.
 
@@ -160,6 +162,9 @@ restart.
   taken.
 - The UI has no login. If you reach it through a reverse proxy, check the
   proxy's authentication and its upstream address.
+- `421` and "does not answer to this host name" means you opened it by a name
+  that is not in `WebHosts:`. Add the name (as the browser shows it, without
+  the port) and reload the configuration.
 
 ## Exit codes from cron
 

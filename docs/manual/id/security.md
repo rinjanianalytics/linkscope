@@ -25,9 +25,11 @@ layanan (perintah eksternal, program ambang batas). Karena itulah berkasnya send
 ### Berkas konfigurasi tepercaya
 
 Setiap berkas konfigurasi, termasuk setiap berkas yang di-include, harus dimiliki oleh root atau
-oleh akun yang menjalankan LinkScope. Baik berkas maupun direktorinya tidak boleh dapat ditulis oleh
-grup atau pihak lain (direktori sticky tidak masalah). LinkScope memeriksa berkas yang benar-benar
-dibukanya, bukan hanya namanya. `--allow-insecure-config` tetap memuat berkas seperti itu dengan
+oleh akun yang menjalankan LinkScope, dan tidak boleh dapat ditulis oleh grup atau pihak lain. Setiap
+direktori di jalurnya harus milik root atau akun itu dan tidak boleh mengizinkan pihak lain mengganti
+nama isinya: tidak dapat ditulis pihak lain, maupun oleh grup selain milik root atau milik akun itu
+sendiri, kecuali direktori sticky. LinkScope memeriksa berkas yang benar-benar dibukanya, bukan hanya
+namanya. `--allow-insecure-config` tetap memuat berkas seperti itu dengan
 peringatan.
 
 ## Kredensial tidak pernah keluar
@@ -57,6 +59,13 @@ rahasia penanda tangan webhook, dan kata sandi mail. Semua itu tidak pernah kelu
 - Antarmuka web hanya-baca dan **tidak memiliki login**. Tidak ada listener web sampai Anda
   menetapkan `WebListen` atau `--listen`. Ikat ke loopback atau jaringan manajemen tepercaya, dan
   pasang reverse proxy dengan autentikasi di depannya sebelum membukanya lebih luas.
+- Antarmuka hanya menjawab alamat IP, `localhost`, dan nama di `WebHosts:`, sehingga halaman web
+  yang mengarahkan namanya sendiri ke alamat antarmuka (DNS rebinding) tidak dapat membacanya dari
+  browser.
+- Antarmuka melayani paling banyak 256 koneksi sekaligus (sisanya menunggu di antrean kernel dan
+  tidak memakai file descriptor daemon, yang dibutuhkan poller), header permintaan harus tiba dalam
+  10 detik, dan koneksi ditutup setelah 120 detik. Klien yang menahan koneksi tidak dapat
+  menghentikan polling. Log diringkas untuk grafik beberapa sekaligus saja.
 
 ## Perangkat tidak dipercaya
 
@@ -81,7 +90,13 @@ didukung dan dianjurkan.
 
 - Setiap agen memiliki jatah waktu per siklus (80 % dari `Interval`).
 - Penelusuran tabel dibatasi oleh waktu, jumlah baris, dan jumlah byte.
-- Angka yang lebih panjang dari 64 karakter ditolak.
+- Angka yang lebih panjang dari 64 karakter ditolak, begitu pula nilai yang lebih lebar dari 190
+  digit (batas MRTG), yang dinilai sebelum diuraikan: `1e999999999` bukan angka.
+- Sesi SNMPv3 yang balasannya ditolak, atau yang autentikasinya gagal, dibuka lagi dengan socket
+  baru dan discovery baru, sehingga balasan palsu tidak dapat merusaknya untuk seterusnya.
+- Pengaturan SNMPv3 yang meminta lebih sedikit dari kesannya (kata sandi privasi tanpa kata sandi
+  autentikasi, protokol tanpa kata sandinya, kata sandi kosong) adalah kesalahan, bukan tingkat
+  keamanan yang diam-diam lebih rendah.
 - Agen yang macet menunda siklus paling lama sebesar jatahnya dan tidak dapat menghalangi agen lain.
 - Kegagalan pada satu target hanya berdampak pada target itu.
 
@@ -99,6 +114,11 @@ berkas pid sebelum ada perbaikan). LinkScope:
 - membaca log dengan `O_NOFOLLOW|O_NONBLOCK`, hanya jika berupa berkas biasa, dan paling banyak
   4 MB, sehingga FIFO atau berkas perangkat di tempat log tidak dapat membuat daemon macet atau
   kehabisan sumber daya.
+
+Cache `.ok` dan status `.alerts` ditulis hanya untuk pemiliknya (mode 600), karena cache, seperti
+milik MRTG, menyebut setiap perangkat dengan community SNMP-nya; berkas yang masih dapat dibaca pihak
+lain ditulis ulang hanya untuk pemiliknya. Keduanya dibaca seperti log (tanpa symlink, tanpa FIFO,
+dengan batas ukuran).
 
 `WorkDir` sendiri dianggap tepercaya: pastikan hanya akun layanan yang dapat menulisinya.
 

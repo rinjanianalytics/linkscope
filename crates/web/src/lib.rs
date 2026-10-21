@@ -57,6 +57,43 @@ async fn static_file(req: Request<Body>) -> Response<Body> {
         .unwrap()
 }
 
+/// The host name of a `Host` header, without its port; an IPv6 literal keeps its brackets off.
+fn host_name(host: &str) -> &str {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or(rest);
+    }
+    match host.rsplit_once(':') {
+        Some((name, port)) if port.bytes().all(|b| b.is_ascii_digit()) => name,
+        _ => host,
+    }
+}
+
+/// Whether the UI answers a request for `host`: an IP address, `localhost`, or a name in
+/// `WebHosts:` (`*`: any).
+pub fn host_allowed(host: &str, allowed: &[String]) -> bool {
+    let name = host_name(host.trim()).trim_end_matches('.');
+    name.parse::<std::net::IpAddr>().is_ok()
+        || name.eq_ignore_ascii_case("localhost")
+        || allowed.iter().any(|a| a == "*" || a.eq_ignore_ascii_case(name))
+}
+
+/// Only requests for a known host are answered. The UI has no login: without this, a web page
+/// whose name is made to resolve to the UI's address (DNS rebinding) reads it from a browser on
+/// the same network. A request without a `Host` header is not from a browser and is answered.
+async fn known_host(axum::extract::State(state): axum::extract::State<SharedState>, req: Request<Body>, next: Next) -> Response<Body> {
+    if let Some(host) = req.headers().get(header::HOST).and_then(|h| h.to_str().ok()) {
+        let allowed = state.read().unwrap_or_else(|e| e.into_inner()).config.as_ref().map(|c| c.global.web_hosts.clone()).unwrap_or_default();
+        if !host_allowed(host, &allowed) {
+            return Response::builder()
+                .status(StatusCode::MISDIRECTED_REQUEST)
+                .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .body(Body::from("This LinkScope does not answer to this host name. Add it to WebHosts: in the configuration.\n"))
+                .unwrap_or_default();
+        }
+    }
+    next.run(req).await
+}
+
 /// Security headers on every response.
 async fn harden(req: Request<Body>, next: Next) -> Response<Body> {
     let mut res = next.run(req).await;
@@ -83,7 +120,8 @@ pub fn router(state: SharedState) -> Router {
         .route("/metrics", get(metrics::metrics))
         .route("/healthz", get(|| async { "ok" }))
         .fallback(static_file)
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, known_host))
         .layer(middleware::from_fn(harden))
 }
 
