@@ -40,6 +40,8 @@ the webhook's signing secret and the mail password. None of them leave LinkScope
 - Credentials are left out when settings are serialized.
 - The webhook URL, its secret and the mail password never appear in the UI, the API, `/metrics`,
   webhooks or error messages.
+- The threshold programs' paths and the threshold mail address are not in the API either: it says
+  only whether a target has them.
 - A test plants secrets in a configuration and searches every endpoint's output for them.
 
 ## The web UI

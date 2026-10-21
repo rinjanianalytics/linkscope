@@ -11,6 +11,9 @@ use linkscope_web::{LiveState, TargetLive};
 use tower::ServiceExt;
 
 const SECRETS: &[&str] = &["Comm-un1ty", "authpass-SECRET", "privpass-SECRET", "--password=cmdSECRET", "hooktoken-SECRET", "hmackey-SECRET", "mailpass-SECRET"];
+/// Not secrets, but the server's business on a UI without a login: where the threshold programs
+/// live (a program of the test's own, see below) and whom threshold mail goes to.
+const PRIVATE: &[&str] = &["thresh-hook-SECRET", "noc-private@example.com"];
 
 #[tokio::test]
 async fn api_never_returns_credentials() {
@@ -18,16 +21,21 @@ async fn api_never_returns_credentials() {
     let cfg_path = dir.path().join("m.cfg");
     let work = dir.path().join("work");
     std::fs::create_dir(&work).unwrap();
+    // A threshold program must exist and be executable for the config to load, as in MRTG.
+    let hook = dir.path().join("thresh-hook-SECRET");
+    std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::write(
         &cfg_path,
         format!(
             "WorkDir: {}\n\
              ThreshMailServer: localhost:587\nThreshMailSender: lab@example.com\nAlertMailUser: lab\nAlertMailPassword: mailpass-SECRET\n\
              AlertWebhook: https://hooks.example.com/t/hooktoken-SECRET\nAlertWebhookSecret: hmackey-SECRET-0123456789\n\
-             Target[a]: 2:Comm-un1ty@router1 / 2\nTitle[a]: A\nMaxBytes[a]: 100\nThreshMaxI[a]: 30%\nThreshFor[a]: 2\nThreshMailAddress[a]: noc@example.com\n\
+             Target[a]: 2:Comm-un1ty@router1 / 2\nTitle[a]: A\nMaxBytes[a]: 100\nThreshMaxI[a]: 30%\nThreshFor[a]: 2\nThreshMailAddress[a]: noc-private@example.com\nThreshProgI[a]: {}\n\
              Target[b]: 3:x@router2:::::3\nSnmpOptions[b]: username=>'u', authpassword=>'authpass-SECRET', privpassword=>'privpass-SECRET'\nTitle[b]: B\nMaxBytes[b]: 100\n\
              Target[c]: `/usr/local/bin/probe --password=cmdSECRET`\nTitle[c]: C\nMaxBytes[c]: 100\n",
-            work.display()
+            work.display(),
+            hook.display()
         ),
     )
     .unwrap();
@@ -45,7 +53,7 @@ async fn api_never_returns_credentials() {
         let res = app.clone().oneshot(Request::get(uri).body(Body::empty()).unwrap()).await.unwrap();
         let body = axum::body::to_bytes(res.into_body(), 1 << 20).await.unwrap();
         let text = String::from_utf8_lossy(&body);
-        for s in SECRETS {
+        for s in SECRETS.iter().chain(PRIVATE) {
             assert!(!text.contains(s), "{uri} leaks {s}: {text}");
         }
     }
