@@ -1,0 +1,12 @@
+# The build needs the Rust sources, the embedded UI (crates/web/ui/dist) and the manual.
+.git
+target
+crates/web/ui/node_modules
+testenv/state
+compose.yaml
+.env
+.env.example
+Dockerfile
+mrtg.cfg
+data
+*.tmp_*

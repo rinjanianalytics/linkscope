@@ -1,7 +1,91 @@
 # Instalasi dan menjalankan
 
-LinkScope adalah satu binary. Antarmuka web sudah dibangun sebelumnya dan
-tertanam di dalamnya, sehingga Anda cukup melakukan build Rust biasa.
+LinkScope adalah satu binary dengan antarmuka web yang tertanam di dalamnya. Jalankan dengan
+Docker, atau bangun dari kode sumber dengan build Rust biasa.
+
+## Menjalankan dengan Docker
+
+Cara tercepat: Docker dengan Compose v2, tanpa toolchain Rust. Anda memerlukan `compose.yaml` dari
+repositori dan konfigurasi Anda.
+
+1. Letakkan konfigurasi Anda di samping `compose.yaml` sebagai `mrtg.cfg`, dengan
+   `WorkDir: /var/lib/linkscope`. Konfigurasi MRTG yang sudah ada cukup diubah baris itu saja. Atau
+   buat konfigurasi baru (cfgmaker mencetak ke standard output):
+
+   ```sh
+   docker compose run --rm -T linkscope cfgmaker --global 'WorkDir: /var/lib/linkscope' \
+       --ifref=name public@192.0.2.1:::::2 > mrtg.cfg
+   ```
+
+2. Izinkan kontainer membacanya, dan tidak ada pihak lain. Kontainer berjalan sebagai uid 10001, dan
+   LinkScope hanya memuat konfigurasi yang dimiliki root atau akunnya sendiri:
+
+   ```sh
+   sudo chown root:10001 mrtg.cfg
+   sudo chmod 640 mrtg.cfg
+   ```
+
+3. Jalankan, lalu buka `http://127.0.0.1:8080/`:
+
+   ```sh
+   docker compose up -d
+   docker compose logs -f
+   ```
+
+Compose menarik image yang sudah dipublikasikan, atau membangunnya dari repositori bila belum ada
+(pembangunan pertama memakan beberapa menit). Untuk membangun sendiri: `docker compose build`.
+
+### Apa yang disimpan kontainer dan di mana
+
+| Path di kontainer | Isi | Di host |
+|---|---|---|
+| `/etc/linkscope/mrtg.cfg` | Konfigurasi Anda, hanya-baca | `./mrtg.cfg` (atau `LINKSCOPE_CONFIG`) |
+| `/var/lib/linkscope` | `WorkDir`: log, cache antarmuka, status peringatan, berkas lock dan PID | volume `linkscope-data` |
+
+Kontainer berjalan sebagai akun tanpa hak istimewa dengan sistem berkas hanya-baca, tanpa
+capability, dan dengan `no-new-privileges`. Cadangkan volume `linkscope-data` seperti direktori
+kerja MRTG.
+
+### Pengaturan Docker
+
+Pengaturan Docker dapat ditaruh di berkas `.env` di samping `compose.yaml` (`.env.example`
+mencantumkannya). Setiap pengaturan punya nilai bawaan, jadi berkas ini opsional. Pengaturan SNMP
+tetap di `mrtg.cfg`.
+
+| Variabel | Bawaan | Arti |
+|---|---|---|
+| `LINKSCOPE_LISTEN` | `127.0.0.1:8080` | Tempat antarmuka, API JSON, dan `/metrics` dipublikasikan di host |
+| `LINKSCOPE_CONFIG` | `./mrtg.cfg` | Berkas konfigurasi di host |
+| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.1.0` | Image yang dijalankan |
+| `CARGO_BUILD_JOBS` | `4` | Jumlah job Cargo saat image dibangun di sini |
+
+Antarmuka web tidak memiliki login. Untuk membukanya dari jaringan manajemen, setel
+`LINKSCOPE_LISTEN` ke alamat di jaringan itu (misalnya `192.0.2.10:8080`) dan cantumkan nama yang
+Anda pakai untuk membukanya di `WebHosts:` (lihat [Antarmuka web](web-ui.md)).
+
+### Menjangkau perangkat Anda
+
+Kontainer melakukan polling melalui network address translation Docker, sehingga perangkat Anda
+melihat alamat host Docker, sama seperti melihat MRTG yang berjalan di host itu: izinkan alamat
+tersebut di daftar akses SNMP perangkat. Perangkat di jaringan Docker lain tidak terjangkau dari
+kontainer kecuali kontainer bergabung ke jaringan itu.
+
+### Memindahkan riwayat MRTG
+
+Untuk mempertahankan grafik dari instalasi MRTG yang sudah ada, salin log-nya ke volume sekali saja,
+sebelum mulai pertama kali (`/var/www/mrtg` hanya contoh; pakai `WorkDir` lama Anda):
+
+```sh
+docker compose run --rm --user root -v /var/www/mrtg:/old:ro --entrypoint sh linkscope \
+    -c 'cp -r /old/. /var/lib/linkscope/ && chown -R 10001:10001 /var/lib/linkscope'
+```
+
+### Memperbarui
+
+```sh
+docker compose pull
+docker compose up -d
+```
 
 ## Membangun dari kode sumber
 

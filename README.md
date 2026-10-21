@@ -28,6 +28,19 @@ also read well here on GitHub.
 
 ## Quick start
 
+With Docker (Compose v2), beside `compose.yaml`:
+
+```sh
+# your configuration, with WorkDir: /var/lib/linkscope (or generate one with cfgmaker, below)
+sudo chown root:10001 mrtg.cfg && sudo chmod 640 mrtg.cfg
+docker compose up -d          # the UI on http://127.0.0.1:8080/
+docker compose run --rm -T linkscope cfgmaker --global 'WorkDir: /var/lib/linkscope' \
+    --ifref=name public@192.0.2.1:::::2 > mrtg.cfg
+```
+
+The manual's [Install and run](docs/manual/en/install.md#run-with-docker) page has the details
+(the `.env` settings, history from MRTG, upgrades). From source:
+
 ```sh
 cargo build --release
 # one cycle, like MRTG from cron

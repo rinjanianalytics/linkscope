@@ -249,11 +249,33 @@ Still open, by choice or for later:
 - `create_dirs` is not fully race-free between levels (it would need `mkdirat`); without `/proc`
   the `Directory[]` protection falls back to the by-name check.
 
+## Docker (2026-10-21)
+
+Most ISPs run Docker, so the default install is an image and a compose file; building from source
+is the alternative. `Dockerfile` (Rust 1.92 to build, Debian bookworm-slim to run, CA certificates
+only, uid 10001, a `/healthz` health check) and `compose.yaml` (the config mounted read-only at
+`/etc/linkscope/mrtg.cfg`, everything LinkScope writes in the `linkscope-data` volume, the UI on the
+host's loopback, a read-only filesystem, no capabilities, `no-new-privileges`, an init for EXEC
+targets' children). Docker's own settings may go in an optional `.env` (`.env.example`); SNMP stays
+in `mrtg.cfg`. Compose pulls `ghcr.io/rinjanianalytics/linkscope`, or builds it when none is
+published.
+
+- [x] The image and compose file, tested.
+      2026-10-21: the image builds (104 MB). With compose: a config owned by the host user is
+      refused with "Permission denied" (the manual says how to fix it); owned `root:10001`, mode
+      640, the container is healthy. `docker compose run cfgmaker` against a net-snmp agent writes a
+      config, and the daemon on it polls (status ok, sysName and uptime read, counters in the logs
+      and on `/metrics`); a foreign Host gets 421, the manual is served, the root filesystem is
+      read-only, the account is uid 10001, `.ok` is 0600; `docker compose down` takes 0.5 s, and
+      after `up` again the volume keeps the logs and the polling goes on.
+
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
 - When this repository goes public (it is private now), and with it whether the manual also
   gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
+- Publishing the image (`ghcr.io/rinjanianalytics/linkscope`, public, for amd64 and arm64?):
+  until then, compose builds it on the user's host.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.

@@ -1,2 +1,6 @@
 target/
 *.tmp_*
+# Docker: the local settings, configuration and data stay out of the repository.
+.env
+/mrtg.cfg
+/data/
