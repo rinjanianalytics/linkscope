@@ -22,7 +22,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # The Dockerfile's rust image; change both together.
-  RUST_VERSION: "1.92.0"
+  RUST_VERSION: "1.99.0"
   # Cargo.toml's rust-version.
   RUST_MSRV: "1.89"
 
