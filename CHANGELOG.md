@@ -3,6 +3,13 @@
 LinkScope follows [semantic versioning](https://semver.org/); before 1.0, a minor version may change
 behavior, and every such change is listed under "Upgrading".
 
+## Unreleased
+
+### Changed
+
+- The web UI's footer carries the Rinjani Analytics mark and links to LinkScope on GitHub and to
+  rinjanianalytics.com, and it sits at the bottom of short pages.
+
 ## 0.2.1 (2026-10-21)
 
 Dependency updates and project housekeeping. Nothing changes in how LinkScope behaves or is

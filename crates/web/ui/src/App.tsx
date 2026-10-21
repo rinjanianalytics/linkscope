@@ -1,6 +1,7 @@
 import { Route, Switch, useLocation } from 'wouter'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppHeader } from '@/components/AppHeader'
+import { AppFooter } from '@/components/AppFooter'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Overview } from '@/pages/Overview'
 import { TargetPage } from '@/pages/TargetPage'
@@ -33,49 +34,33 @@ export default function App() {
       >
         Skip to content
       </a>
-      <AppHeader
-        version={summary.data?.version}
-        updatedAt={targets.updatedAt}
-        loading={summary.loading || targets.loading}
-      />
-      <main id="main" className="mx-auto w-full max-w-(--breakpoint-2xl) px-gutter py-section">
-        <ErrorBoundary key={location}>
-          <Switch>
-            <Route path="/">
-              <Overview summary={summary} targets={targets} />
-            </Route>
-            <Route path="/target/:name">{(params) => <TargetPage name={decode(params.name)} />}</Route>
-            <Route path="/docs">
-              <DocsHome />
-            </Route>
-            <Route path="/docs/:lang">{(params) => <DocsHome lang={decode(params.lang)} />}</Route>
-            <Route path="/docs/:lang/:slug">{(params) => <DocsPage lang={decode(params.lang)} slug={decode(params.slug)} />}</Route>
-            <Route>
-              <NotFound />
-            </Route>
-          </Switch>
-        </ErrorBoundary>
-      </main>
-      <footer className="mx-auto w-full max-w-(--breakpoint-2xl) px-gutter pb-section text-xs text-muted-foreground">
-        <span className="flex flex-wrap gap-x-2 gap-y-1">
-          <span>LinkScope{summary.data ? ` ${summary.data.version}` : ''} by Rinjani Analytics</span>
-          <span aria-hidden>·</span>
-          <span>
-            Based on{' '}
-            <a
-              href="https://oss.oetiker.ch/mrtg/"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-4 hover:text-foreground"
-            >
-              MRTG
-            </a>{' '}
-            by Tobias Oetiker and contributors
-          </span>
-          <span aria-hidden>·</span>
-          <span>GPL-2.0-or-later</span>
-        </span>
-      </footer>
+      {/* A full-height column, so the footer sits at the bottom of short pages. */}
+      <div className="flex min-h-svh flex-col">
+        <AppHeader
+          version={summary.data?.version}
+          updatedAt={targets.updatedAt}
+          loading={summary.loading || targets.loading}
+        />
+        <main id="main" className="mx-auto w-full flex-1 max-w-(--breakpoint-2xl) px-gutter py-section">
+          <ErrorBoundary key={location}>
+            <Switch>
+              <Route path="/">
+                <Overview summary={summary} targets={targets} />
+              </Route>
+              <Route path="/target/:name">{(params) => <TargetPage name={decode(params.name)} />}</Route>
+              <Route path="/docs">
+                <DocsHome />
+              </Route>
+              <Route path="/docs/:lang">{(params) => <DocsHome lang={decode(params.lang)} />}</Route>
+              <Route path="/docs/:lang/:slug">{(params) => <DocsPage lang={decode(params.lang)} slug={decode(params.slug)} />}</Route>
+              <Route>
+                <NotFound />
+              </Route>
+            </Switch>
+          </ErrorBoundary>
+        </main>
+        <AppFooter version={summary.data?.version} />
+      </div>
     </TooltipProvider>
   )
 }
