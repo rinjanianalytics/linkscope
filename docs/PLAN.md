@@ -299,13 +299,15 @@ a minor version (semantic versioning before 1.0). `CHANGELOG.md` lists what chan
         prometheus, isp, netops, self-hosted, docker).
 
 Releasing again (AK, 2026-10-21: a release pipeline in GitHub Actions):
-bump the version and add its CHANGELOG section (with "Upgrading" when behavior changes), merge,
-then push a tag `v<version>`. `.github/workflows/release.yml` runs CI, checks that the tag, the
+bump the version and turn CHANGELOG's "Unreleased" into the version's section (with "Upgrading"
+when behavior changes), merge, then push a tag `v<version>`. `.github/workflows/release.yml` runs CI, checks that the tag, the
 version and the changelog agree, pushes the image for linux/amd64 and linux/arm64 (and `latest`,
 except for a pre-release such as `0.3.0-rc.1`), and last creates the GitHub release from the
-changelog. `.github/workflows/ci.yml` checks every pull request and every push to main: clippy and
-the tests on Rust 1.92.0 (the image's), and a build on 1.89 (`rust-version`). A pull request that
-changes the Dockerfile, and a manual run of Release, builds both images without pushing.
+changelog, then runs the published image on amd64 and arm64 (`smoke.yml`).
+`.github/workflows/ci.yml` checks every pull request and every push to main: rustfmt, the UI
+rebuilt and compared with the committed `dist`, clippy and the tests on Rust 1.92.0 (the image's),
+and a build on 1.89 (`rust-version`). A pull request that changes the Dockerfile, and a manual run
+of Release, builds both images without pushing.
 
 - [x] CI and the release pipeline.
       2026-10-21, PR #17 (`bf22df4`):
@@ -326,8 +328,8 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
       `git config blame.ignoreRevsFile .git-blame-ignore-revs`). PR #20 added it; in
       `crates/config/src/check.rs`, the lines blame gives to the formatting commit fell from 218 to 4.
 - [x] CI required before merging to main (AK, 2026-10-21).
-      Branch protection on `main`: the checks Rustfmt, Clippy and tests, and Build on the oldest
-      supported Rust must pass, for admins too; the branch need not be up to date with main first;
+      Branch protection on `main`: the checks Rustfmt, UI build (since #22), Clippy and tests, and
+      Build on the oldest supported Rust must pass, for admins too; the branch need not be up to date with main first;
       no review required (one maintainer); no force pushes or deletion. The Release dry run is not
       required, since it runs only when the Docker files change.
       - Each check must come from GitHub Actions (app 15368), so a status posted any other way
@@ -340,8 +342,32 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
         pull request waits for a check that never comes (Settings, Branches, main).
       - Nothing reaches main except through a pull request with green CI, admins included. To
         change that in an emergency, turn off "Do not allow bypassing" there, and turn it back on.
+- [x] A public repository's basics (AK, 2026-10-21).
+      Going public left no private way to report a vulnerability: GitHub showed this repository's
+      `docs/SECURITY.md` as its policy, and it had no reporting section, so the only channel was a
+      public issue.
+      - Settings, on since then: private vulnerability reporting, Dependabot alerts and security
+        updates, secret scanning and push protection. Their first scans found nothing.
+      - PR #22 (`43e24e0`):
+        - `docs/SECURITY.md` opens with "Reporting a vulnerability": GitHub's private report,
+          what to include, an answer within seven days, credit.
+        - `.github/dependabot.yml`: cargo, npm, GitHub Actions and Docker, weekly (Mondays,
+          06:00 WIB), grouped.
+        - CI's "UI build" rebuilds `crates/web/ui/dist` with Node 22 and fails when it differs
+          from the committed one; a fresh build reproduced it byte for byte. An npm update
+          (Dependabot's too) needs `npm ci && npm run build` and the new `dist` on its branch.
+          It is a required check.
+        - `smoke.yml` runs the published image as the manual's Docker quick start, on amd64 and
+          on arm64 (GitHub's arm runner): cfgmaker from the image against snmpd on the runner,
+          `docker compose up`, a poll that succeeded, `/metrics`, `/docs`, a healthy container.
+          On 0.2.0, the first run of the arm64 image anywhere, both passed alike: 2 interfaces
+          found, 2 polled, 0 failed, `/docs` 200, healthy.
+        - `CONTRIBUTING.md`, issue forms (bug, idea; the private report and the manual as
+          links), and an "Unreleased" section in the changelog.
+      - GitHub's community profile went from 57 % to 71 %; a code of conduct and a pull request
+        template are what it still lists.
 - [ ] The first release through the pipeline: its first push to GHCR with the repository's own
-      token.
+      token, and the image's run on both platforms after it.
 
 ## Open decisions
 
@@ -351,3 +377,7 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
   rinjanianalytics.com). The repository is public, and GitHub already shows the pages.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
+- The answer time `docs/SECURITY.md` promises to vulnerability reporters (seven days, written on
+  AK's behalf).
+- A code of conduct for contributors (the Contributor Covenant, for example), which would also
+  complete GitHub's community profile with a pull request template.
