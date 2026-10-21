@@ -7,6 +7,7 @@
 # and linux/arm64 (and moves `latest`, except for a pre-release such as 0.3.0-rc.1), and last
 # creates the GitHub release from the changelog's section, so a release never names an image
 # that cannot be pulled.
+# Then it runs the published image on amd64 and arm64 (smoke.yml).
 #
 # A pull request that changes the Dockerfile, and a manual run (Actions, Release, Run workflow),
 # build both images without pushing anything: a dry run.
@@ -64,6 +65,8 @@ jobs:
     permissions:
       contents: write # the GitHub release
       packages: write # the image
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -149,3 +152,11 @@ jobs:
           if [ "$PRERELEASE" = true ]; then flags="--prerelease --latest=false"; fi
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "LinkScope $VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md" $flags
+
+  smoke:
+    name: Run the published image
+    needs: publish
+    uses: ./.github/workflows/smoke.yml
+    with:
+      # The image tag is the version, without the tag's v.
+      tag: ${{ needs.publish.outputs.version }}

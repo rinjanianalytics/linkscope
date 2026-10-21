@@ -1,0 +1,19 @@
+name: Idea
+description: Something LinkScope should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you need, and why
+      description: The problem in your network or workflow, before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How you would like it to work
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today instead
