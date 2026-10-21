@@ -175,11 +175,10 @@ fn render(lang: &'static str, slug: &str, markdown: &str, slugs: &HashSet<&str>)
             i = end + 1;
             continue;
         }
-        if let Event::Start(Tag::Link { dest_url, .. }) = &mut events[i] {
-            if let Some(to) = link(dest_url, lang, slugs) {
+        if let Event::Start(Tag::Link { dest_url, .. }) = &mut events[i]
+            && let Some(to) = link(dest_url, lang, slugs) {
                 *dest_url = CowStr::from(to);
             }
-        }
         i += 1;
     }
     let mut html = String::new();

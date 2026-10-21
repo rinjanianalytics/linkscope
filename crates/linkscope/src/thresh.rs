@@ -104,13 +104,11 @@ pub fn cleartext_warnings(cfg: &Config) -> Vec<String> {
             ));
         }
     }
-    if let Some(url) = &g.alert_webhook {
-        if let Ok(u) = reqwest::Url::parse(url) {
-            if u.scheme() == "http" && !u.host_str().is_some_and(local) {
+    if let Some(url) = &g.alert_webhook
+        && let Ok(u) = reqwest::Url::parse(url)
+            && u.scheme() == "http" && !u.host_str().is_some_and(local) {
                 out.push("AlertWebhook uses http://: alert bodies, and any token in its URL, travel unencrypted; use https://".into());
             }
-        }
-    }
     out
 }
 
@@ -403,11 +401,10 @@ pub async fn execute(cfg: &Config, actions: Vec<Action>) {
             match a {
                 Action::Run { argv, env } => run_program(&argv, env, PROGRAM_TIMEOUT).await,
                 Action::Mail { to, subject, body } => {
-                    if let (Some(m), Some(from)) = (mailer, sender) {
-                        if let Err(e) = send_mail(&m, &from, &to, &subject, &body).await {
+                    if let (Some(m), Some(from)) = (mailer, sender)
+                        && let Err(e) = send_mail(&m, &from, &to, &subject, &body).await {
                             tracing::warn!("sending threshold mail to {to}: {e}");
                         }
-                    }
                 }
                 Action::Webhook { target, body } => {
                     if let Some(h) = hook {

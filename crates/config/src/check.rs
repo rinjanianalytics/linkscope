@@ -318,12 +318,11 @@ fn mkdirs_beneath(base: &Path, rel: &str, errors: &mut Vec<String>) {
             }
             // mkdir does not follow a symlink in its last component: one made in between fails.
             Err(_) => {
-                if let Err(e) = fs::DirBuilder::new().mode(0o755).create(&p) {
-                    if !(e.kind() == std::io::ErrorKind::AlreadyExists && p.is_dir() && !p.is_symlink()) {
+                if let Err(e) = fs::DirBuilder::new().mode(0o755).create(&p)
+                    && !(e.kind() == std::io::ErrorKind::AlreadyExists && p.is_dir() && !p.is_symlink()) {
                         errors.push(format!("cannot create directory {}: {e}", p.display()));
                         return;
                     }
-                }
             }
         }
     }
