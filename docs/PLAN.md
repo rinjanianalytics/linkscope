@@ -126,16 +126,50 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
 
 ## The manual (2026-10-21)
 
-LinkScope had no documentation beyond the README. The manual is served by LinkScope itself at
-`/docs` (so it matches the installed version and works without internet access), in English and
-Bahasa (the owner's choice), from Markdown in `docs/manual/<lang>/` in mdBook's layout, so a public site
-later is a build of the same pages. `crates/web/tests/docs.rs` holds it together: every page in
-both languages in the same order, every link between pages leading to a page and a heading.
+LinkScope had no documentation beyond the README. The owner chose a manual served by LinkScope itself,
+in English and Bahasa.
+
+- **Where:** `/docs` on the web listener (a **Docs** link in the header). It matches the
+  installed version and works without internet access.
+- **Source:** Markdown in `docs/manual/en/` and `docs/manual/id/`, in mdBook's layout
+  (`SUMMARY.md` lists the pages), so the pages read on GitHub and a public site later is an
+  mdBook build of the same files.
+- **Serving:** `crates/web/src/docs.rs` embeds the pages, renders them with `pulldown-cmark` and
+  sanitizes them with `ammonia` like every other HTML the API gives (`GET /api/docs`,
+  `GET /api/docs/{lang}/{page}`); the UI shows them through `HtmlContent`, with no JavaScript
+  dependency added.
+- **Pages (13 in each language):** introduction, install and run, moving from MRTG, command
+  line, configuration, cfgmaker, web UI, Prometheus metrics, alerts, JSON API, security,
+  compatibility with MRTG, troubleshooting. Each fact was taken from the code; what the code did
+  not confirm was left out.
+- **Keeping it whole:** a change to a keyword, an option, an endpoint or a metric updates the
+  manual in both languages in the same PR. `crates/web/tests/docs.rs` fails when a page is
+  missing in a language, the order differs, a page has an em dash, or a link between pages leads
+  to no page or no heading.
+
+Found while writing it:
+- The README's cfgmaker examples set the backoff, not the SNMP version (`::::2`); fixed in #5
+  (`:::::2`, `:::::3`).
+- `GET /api/targets/{name}` returned the threshold programs' paths and the threshold mail
+  address, on a UI without a login. Fixed in #6: the API says only whether they are set, and
+  `no_secrets.rs` checks both (it fails on the old code).
+- cfgmaker without `--ifref` refers to interfaces by ifName, else the ifIndex. That is MRTG
+  2.17.10's behavior too (its code and `--help`); its longer manual page says `nr`, which is out
+  of date. No change; the manual says so.
+
+- [x] The manual at `/docs`, in English and Bahasa.
+      2026-10-21 (#5, #6): 13 pages in each language; `cargo test --workspace` 87 pass, the
+      manual's tests among them. In Google Chrome 154 against the built binary: the Docs link, a
+      link between pages, `/docs/en/alerts#webhook` landing on its heading, the EN/ID switch on
+      the same page, a 390 px phone with an Indonesian browser opening the Bahasa pages, the
+      missing-page message; no sideways scroll and no errors, light and dark. On the lab since
+      2026-10-21 11:13 WIB (`linkscope-lab` on `main`, a169b43), over the tailnet at port 8443.
 
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
-- When this repository goes public (it is private now).
+- When this repository goes public (it is private now), and with it whether the manual also
+  gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
