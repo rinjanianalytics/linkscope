@@ -3,6 +3,13 @@
 LinkScope follows [semantic versioning](https://semver.org/); before 1.0, a minor version may change
 behavior, and every such change is listed under "Upgrading".
 
+## Unreleased
+
+- Security problems are reported privately on GitHub (`docs/SECURITY.md`, "Reporting a
+  vulnerability").
+- `CONTRIBUTING.md`, issue templates, and weekly dependency updates by Dependabot.
+- Each release's image is run on amd64 and arm64 after it is published.
+
 ## 0.2.0 (2026-10-21)
 
 The first public release. It adds metrics, alerts that reach people, a manual and a Docker image to

@@ -1,5 +1,26 @@
 # Security notes
 
+## Reporting a vulnerability
+
+Please do not open a public issue for a security problem. Report it privately on GitHub:
+**Security**, then **Report a vulnerability**
+(https://github.com/rinjanianalytics/linkscope/security/advisories/new). Only the maintainers see
+it.
+
+Say which version you run (`linkscope --version`), how LinkScope is installed (binary or Docker),
+what an attacker needs (a position on the network, a polled device, a local account, write
+access to the configuration) and what they gain. Steps or a test that shows it help most; leave
+out real communities, passwords and addresses.
+
+We aim to answer within seven days, agree a fix and a date with you, and credit you in the
+advisory and the changelog unless you prefer otherwise. Fixes go into the latest release; there
+are no older release lines yet.
+
+The rest of this page is what LinkScope does about the weaknesses known in MRTG, and the findings
+of the assessment made before the source was published.
+
+## LinkScope against MRTG's known weaknesses
+
 This maps the weaknesses found in the MRTG 2.17.10 teardown to what
 LinkScope does instead. It is defensive documentation: how the design closes
 each issue, not how to exploit MRTG.
