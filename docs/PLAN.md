@@ -319,7 +319,16 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
         1.89, so `rust-version` 1.88 had been wrong since #12. The minimum is now 1.89 in
         `Cargo.toml`, CI, the manual (EN, ID) and the changelog. The v0.2.0 release notes were
         corrected too. The image builds with 1.92 and was never affected.
-      - No rustfmt check: the code has never been formatted with it (605 places differ).
+- [x] rustfmt once, then checked (2026-10-21).
+      PR #19: `cargo fmt --all` with Rust 1.92.0's rustfmt, default settings, in a commit of its
+      own (`a54d2e8`, 47 files, formatting only: clippy clean, 114 tests pass), and a Rustfmt job
+      in CI. `.git-blame-ignore-revs` lists the commit, so blame skips it (GitHub on its own; locally
+      `git config blame.ignoreRevsFile .git-blame-ignore-revs`).
+- [x] CI required before merging to main (2026-10-21).
+      Branch protection on `main`: the checks Rustfmt, Clippy and tests, and Build on the oldest
+      supported Rust must pass, for admins too; the branch need not be up to date with main first;
+      no review required (one maintainer); no force pushes or deletion. The Release dry run is not
+      required, since it runs only when the Docker files change.
 - [ ] The first release through the pipeline: its first push to GHCR with the repository's own
       token.
 
@@ -329,8 +338,5 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
 - Whether the manual also gets a public website (an mdBook build of `docs/manual`, for example on
   rinjanianalytics.com). The repository is public, and GitHub already shows the pages.
-- Requiring CI to pass before anything merges to main (branch protection). It needs no change to
-  the workflows, only the repository's settings.
-- Formatting the code with rustfmt once, in a commit of its own, and then checking it in CI.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
