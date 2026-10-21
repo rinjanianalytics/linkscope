@@ -252,7 +252,7 @@ Still open, by choice or for later:
 ## Docker (2026-10-21)
 
 Most ISPs run Docker, so the default install is an image and a compose file; building from source
-is the alternative. `Dockerfile` (Rust 1.92 to build, Debian bookworm-slim to run, CA certificates
+is the alternative. `Dockerfile` (Rust 1.99 to build, 1.92 until #34; Debian bookworm-slim to run, CA certificates
 only, uid 10001, a `/healthz` health check) and `compose.yaml` (the config mounted read-only at
 `/etc/linkscope/mrtg.cfg`, everything LinkScope writes in the `linkscope-data` volume, the UI on the
 host's loopback, a read-only filesystem, no capabilities, `no-new-privileges`, an init for EXEC
@@ -305,7 +305,7 @@ version and the changelog agree, pushes the image for linux/amd64 and linux/arm6
 except for a pre-release such as `0.3.0-rc.1`), and last creates the GitHub release from the
 changelog, then runs the published image on amd64 and arm64 (`smoke.yml`).
 `.github/workflows/ci.yml` checks every pull request and every push to main: rustfmt, the UI
-rebuilt and compared with the committed `dist`, clippy and the tests on Rust 1.92.0 (the image's),
+rebuilt and compared with the committed `dist`, clippy and the tests on Rust 1.99.0 (the image's),
 and a build on 1.89 (`rust-version`). A pull request that changes the Dockerfile, and a manual run
 of Release, builds both images without pushing.
 
