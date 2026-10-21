@@ -74,6 +74,16 @@ fn clean(v: &str) -> String {
     v.replace(['\n', '\r'], "").trim().to_string()
 }
 
+/// Longest device string kept (sysName, uptime): they travel to the API, the UI and `/metrics`.
+pub const MAX_DEVICE_TEXT: usize = 256;
+
+/// A string a device sent, as LinkScope keeps it: cleaned as MRTG does, at most
+/// [`MAX_DEVICE_TEXT`] characters.
+fn device_text(v: &str) -> String {
+    let c = clean(v);
+    if c.chars().count() <= MAX_DEVICE_TEXT { c } else { c.chars().take(MAX_DEVICE_TEXT).collect() }
+}
+
 impl Poller {
     /// Poll every source referenced by the configuration.
     pub async fn poll_all(&self) -> Vec<SourceResult> {
@@ -264,8 +274,8 @@ impl GroupCtx {
             };
             let time = now();
             let get = |s: Option<usize>| s.and_then(|i| vals.get(i)).filter(|v| v.is_present());
-            let uptime = get(up_slot).map(|v| clean(&v.pretty()));
-            let name = get(name_slot).map(|v| clean(&v.pretty()));
+            let uptime = get(up_slot).map(|v| device_text(&v.pretty()));
+            let name = get(name_slot).map(|v| device_text(&v.pretty()));
 
             let mut next_todo = Vec::new();
             for (p, s) in plans.into_iter().zip(slots) {
@@ -359,11 +369,22 @@ impl GroupCtx {
         if self.cache.lock().unwrap_or_else(|e| e.into_inner()).is_dead(hk) {
             return Err(SnmpError::Timeout(who));
         }
-        let mut walked: Vec<(&str, Vec<(String, Val)>)> = Vec::new();
+        // Each walk stops at the rows the cache keeps and becomes cache entries at once (keys cut
+        // to MAX_KEY_CHARS), within one budget per host: a device cannot make LinkScope hold five
+        // huge walks, nor grow the `.ok` file without bound.
+        let mut rows: Vec<(&str, String, String)> = Vec::new();
+        let mut budget = HostBudget::default();
         for (node, method) in [("ifName", "Name"), ("ifDescr", "Descr"), ("ifType", "Type"), ("ipAdEntIfIndex", "Ip")] {
             let base = self.oids.resolve(node).expect("built-in OID");
-            match sess.walk(&base).await {
-                Ok(rows) => walked.push((method, rows)),
+            match sess.walk_first(&base, MAX_CACHE_ROWS).await {
+                Ok(walked) => {
+                    for (suffix, v) in walked {
+                        let (key, value) = if method == "Ip" { (suffix, v.pretty()) } else { (cache_key(&v.pretty()), suffix) };
+                        if budget.take(&key, &value) {
+                            rows.push((method, key, value));
+                        }
+                    }
+                }
                 Err(SnmpError::Timeout(t)) => {
                     self.cache.lock().unwrap_or_else(|e| e.into_inner()).mark_dead(hk);
                     return Err(SnmpError::Timeout(t));
@@ -371,25 +392,24 @@ impl GroupCtx {
                 Err(e) => tracing::debug!("skipping {node} scan on {who}: {e}"),
             }
         }
-        let eth = sess.walk(&self.oids.resolve("ifPhysAddress").expect("built-in OID")).await.unwrap_or_default();
-        let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        c.clear_host(hk);
-        for (method, rows) in walked {
-            for (suffix, v) in rows.into_iter().take(MAX_CACHE_ROWS) {
-                if method == "Ip" {
-                    c.store(hk, "Ip", &suffix, Some(&v.pretty()));
-                } else {
-                    let desc: String = trim_ctl(&v.pretty()).chars().take(MAX_KEY_CHARS).map(|ch| if ch <= ' ' { ' ' } else { ch }).collect();
-                    c.store(hk, method, &desc, Some(&suffix));
-                }
-            }
-        }
-        for (suffix, v) in eth.into_iter().take(MAX_CACHE_ROWS) {
+        let eth = sess.walk_first(&self.oids.resolve("ifPhysAddress").expect("built-in OID"), MAX_CACHE_ROWS).await.unwrap_or_default();
+        for (suffix, v) in eth {
             let bytes = match &v {
                 Val::Str(b) | Val::Opaque(b) => b.clone(),
                 _ => continue,
             };
-            c.store(hk, "Eth", &mac_string(&bytes), Some(&suffix));
+            let key = mac_string(&bytes);
+            if budget.take(&key, &suffix) {
+                rows.push(("Eth", key, suffix));
+            }
+        }
+        if budget.full {
+            tracing::warn!("{who} reports more interface data than LinkScope caches ({MAX_HOST_CACHE_BYTES} bytes); interfaces past that are matched by ifIndex only");
+        }
+        let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+        c.clear_host(hk);
+        for (method, key, value) in rows {
+            c.store(hk, method, &key, Some(&value));
         }
         Ok(())
     }
@@ -397,6 +417,33 @@ impl GroupCtx {
 
 /// Interface-table rows kept per host and walk (a router has far fewer).
 const MAX_CACHE_ROWS: usize = 100_000;
+/// Bytes of cache entries kept per host (a router with 10,000 interfaces needs about 3 MB).
+const MAX_HOST_CACHE_BYTES: usize = 8 * 1024 * 1024;
+
+/// What one host's cache entries may take.
+#[derive(Default)]
+struct HostBudget {
+    used: usize,
+    full: bool,
+}
+
+impl HostBudget {
+    /// Whether a key and value still fit; once one does not, nothing more does.
+    fn take(&mut self, key: &str, value: &str) -> bool {
+        let cost = key.len() + value.len() + 16;
+        if self.full || self.used + cost > MAX_HOST_CACHE_BYTES {
+            self.full = true;
+            return false;
+        }
+        self.used += cost;
+        true
+    }
+}
+
+/// A device string as a cache key: control characters as spaces, at most MAX_KEY_CHARS.
+fn cache_key(v: &str) -> String {
+    trim_ctl(v).chars().take(MAX_KEY_CHARS).map(|ch| if ch <= ' ' { ' ' } else { ch }).collect()
+}
 /// Longest ifDescr/ifName kept as a cache key.
 const MAX_KEY_CHARS: usize = 256;
 
@@ -498,6 +545,16 @@ impl Pseudo {
 /// Maximum bytes read from an external command (only 4 lines are used).
 const EXEC_MAX_OUTPUT: usize = 64 * 1024;
 
+/// `PathAdd` in front of `PATH`. With `PATH` unset or empty, `PathAdd` alone: `dir:` would end
+/// in an empty entry, which means the current directory.
+fn path_with(add: &str, path: Option<&str>) -> String {
+    let add = add.trim_end_matches('/');
+    match path {
+        Some(p) if !p.is_empty() => format!("{add}:{p}"),
+        _ => add.to_string(),
+    }
+}
+
 /// `getexternal`: run a command and read in, out, uptime and name lines.
 ///
 /// Like MRTG, only the first four lines matter: once they are read (or the
@@ -529,8 +586,7 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
         c
     };
     if let Some(p) = path_add {
-        let path = std::env::var("PATH").unwrap_or_default();
-        command.env("PATH", format!("{}:{path}", p.trim_end_matches('/')));
+        command.env("PATH", path_with(p, std::env::var("PATH").ok().as_deref()));
     }
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit()).kill_on_drop(true).process_group(0);
     let mut child = match command.spawn() {
@@ -577,10 +633,12 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
         }
     };
     if finished {
-        // Output closed: give the command a moment to exit, then make sure.
-        if tokio::time::timeout(Duration::from_secs(5), child.wait()).await.is_err() {
-            kill_group();
-        }
+        // Output closed: give the command a moment to exit. Then end its process group in any
+        // case: something it started in the background with its own output would otherwise be
+        // left running, one more every cycle. The group's id cannot be taken by another process
+        // while any member of it lives, and an empty group is simply not found.
+        let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
+        kill_group();
     } else {
         // We have what MRTG reads; stop the rest of the output.
         kill_group();
@@ -630,6 +688,48 @@ pub async fn run_external(cmd: &str, allow_shell: bool, path_add: Option<&str>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_add_never_adds_the_current_directory() {
+        assert_eq!(path_with("/opt/probe/", Some("/usr/bin:/bin")), "/opt/probe:/usr/bin:/bin");
+        // With PATH unset or empty, `dir:` would end in an empty entry: the current directory.
+        assert_eq!(path_with("/opt/probe", None), "/opt/probe");
+        assert_eq!(path_with("/opt/probe", Some("")), "/opt/probe");
+    }
+
+    #[test]
+    fn device_strings_and_cache_entries_are_bounded() {
+        let long = format!("{}\r\n", "x".repeat(10_000));
+        assert_eq!(device_text(&long).chars().count(), MAX_DEVICE_TEXT);
+        assert_eq!(device_text("  core-sw1\r\n"), "core-sw1");
+        assert_eq!(cache_key(&"y".repeat(1000)).chars().count(), MAX_KEY_CHARS);
+        assert_eq!(cache_key("Gi0/1\tuplink"), "Gi0/1 uplink");
+        // One host's entries share a budget; once it is spent, nothing more is kept.
+        let mut b = HostBudget::default();
+        let big = "z".repeat(MAX_HOST_CACHE_BYTES / 2);
+        assert!(b.take(&big, "1"));
+        assert!(!b.take(&big, "2"));
+        assert!(!b.take("small", "3") && b.full);
+    }
+
+    /// Something an EXEC target starts in the background is ended with it, not left running
+    /// (one more every cycle).
+    #[tokio::test]
+    async fn an_exec_target_leaves_no_process_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("pid");
+        let cmd = format!("sleep 30 >/dev/null 2>&1 & echo $! > {}; printf '1\\n2\\nup\\nname\\n'", pidfile.display());
+        let r = run_external(&cmd, true, None, Duration::from_secs(10)).await;
+        assert_eq!((r.input.as_deref(), r.output.as_deref()), (Some("1"), Some("2")), "{r:?}");
+        let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        // Gone, or a zombie waiting for init to reap it: either way no longer running.
+        let running = || std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|st| st.rsplit(')').next().is_some_and(|rest| !rest.trim_start().starts_with('Z')));
+        let started = std::time::Instant::now();
+        while running() && started.elapsed() < Duration::from_secs(3) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(!running(), "the background sleep ({pid}) is still running");
+    }
 
     #[tokio::test]
     async fn external_parsing() {

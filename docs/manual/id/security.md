@@ -89,7 +89,14 @@ didukung dan dianjurkan.
 ### Agen yang berbahaya atau lambat
 
 - Setiap agen memiliki jatah waktu per siklus (80 % dari `Interval`).
-- Penelusuran tabel dibatasi oleh waktu, jumlah baris, dan jumlah byte.
+- Penelusuran tabel dibatasi oleh waktu, jumlah baris (100.000), dan jumlah byte, dengan setiap
+  baris dihitung sesuai biayanya. Cache antarmuka menyimpan paling banyak 8 MB per perangkat,
+  sehingga berkas `.ok` tetap kecil.
+- Jawaban GET hanya dipakai untuk objek yang disebutnya, sehingga balasan nyasar atau basi tidak
+  dapat memasang counter satu antarmuka pada antarmuka lain.
+- Setelah permintaan yang tidak dijawab, permintaan berikutnya dikirim dari socket baru, sehingga
+  balasan terlambat untuk permintaan lama tidak dapat dibaca sebagai jawaban yang baru.
+- String perangkat (sysName, uptime) disimpan paling banyak 256 karakter.
 - Angka yang lebih panjang dari 64 karakter ditolak, begitu pula nilai yang lebih lebar dari 190
   digit (batas MRTG), yang dinilai sebelum diuraikan: `1e999999999` bukan angka.
 - Sesi SNMPv3 yang balasannya ditolak, atau yang autentikasinya gagal, dibuka lagi dengan socket

@@ -56,7 +56,10 @@ linkscope cfgmaker --username linkscope --authprotocol sha256 \
 
 Opsi tersebut ditulis ke `SnmpOptions[]` setiap target. Opsi hanya berlaku untuk perangkat dengan
 versi 3; untuk perangkat lain opsi itu dihilangkan. Baris perintah di header berkas menampilkan
-kata sandi sebagai `XXXXX`.
+kata sandi, kunci, dan community (opsi maupun `community@router`) sebagai `XXXXX`.
+
+cfgmaker menulis paling banyak 50.000 antarmuka untuk satu perangkat; perangkat yang melaporkan
+lebih banyak adalah kesalahan.
 
 ## Opsi
 
