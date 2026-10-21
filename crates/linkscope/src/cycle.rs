@@ -57,6 +57,12 @@ impl Default for EngineOptions {
     }
 }
 
+/// Batches of threshold actions run at once.
+const RUNNING_BATCHES: usize = 4;
+/// Batches that may wait for a slot (one per cycle with a change: about four hours at five
+/// minutes) before the oldest is given up, with an error.
+const MAX_WAITING: usize = 50;
+
 pub struct Engine {
     pub cfg: Arc<Config>,
     poller: Poller,
@@ -65,6 +71,10 @@ pub struct Engine {
     opts: EngineOptions,
     /// Threshold actions still running from earlier cycles.
     actions: tokio::task::JoinSet<()>,
+    /// Batches of threshold actions waiting for a slot. An alert is recorded as firing when it
+    /// fires, so a batch that was dropped (a slow mail server or webhook receiver) was never
+    /// announced at all; they wait here instead, within [`MAX_WAITING`].
+    waiting: std::collections::VecDeque<Vec<thresh::Action>>,
     /// LinkScope's alert state, kept in `<cache>.alerts`.
     alerts: Book,
     alerts_path: PathBuf,
@@ -150,11 +160,15 @@ impl Engine {
                 }
             }
         }
-        Engine { cfg, poller, state, cache_path, opts, actions: tokio::task::JoinSet::new(), alerts, alerts_path, removed }
+        Engine { cfg, poller, state, cache_path, opts, actions: tokio::task::JoinSet::new(), waiting: Default::default(), alerts, alerts_path, removed }
     }
 
     /// Wait for threshold actions still running (call before exiting).
     pub async fn finish(&mut self) {
+        while let Some(batch) = self.waiting.pop_front() {
+            let cfg = self.cfg.clone();
+            self.actions.spawn(async move { thresh::execute(&cfg, batch).await });
+        }
         while self.actions.join_next().await.is_some() {}
     }
 
@@ -259,15 +273,24 @@ impl Engine {
         }
         tracing::debug!("cycle timing: polling {poll_ms} ms, log updates and sync {} ms", t0.elapsed().as_millis() - poll_ms);
 
-        // Threshold programs and mail run in the background, bounded.
+        // Threshold programs, mail and webhooks run in the background, a few batches at a time;
+        // the others wait their turn rather than being dropped.
         while self.actions.try_join_next().is_some() {}
         if !actions.is_empty() {
-            if self.actions.len() > 4 {
-                tracing::warn!("threshold actions from earlier cycles are still running; skipping {} new actions", actions.len());
-            } else {
-                let cfg = cfg.clone();
-                self.actions.spawn(async move { thresh::execute(&cfg, actions).await });
+            self.waiting.push_back(actions);
+        }
+        while self.waiting.len() > MAX_WAITING {
+            if let Some(lost) = self.waiting.pop_front() {
+                tracing::error!("threshold actions have waited {MAX_WAITING} cycles behind slow ones; {} notices were not sent", lost.len());
             }
+        }
+        while self.actions.len() < RUNNING_BATCHES {
+            let Some(batch) = self.waiting.pop_front() else { break };
+            let cfg = cfg.clone();
+            self.actions.spawn(async move { thresh::execute(&cfg, batch).await });
+        }
+        if !self.waiting.is_empty() {
+            tracing::warn!("threshold actions are waiting behind slow ones: {} batches", self.waiting.len());
         }
 
         let cache = self.poller.cache.clone();

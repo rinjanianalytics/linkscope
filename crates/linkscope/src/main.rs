@@ -273,7 +273,10 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
                 _ = hup.recv() => reload = true,
             }
             if reload || mtimes(&cfg) != stamps {
-                match load_config(&args.config, args.allow_insecure_config).and_then(|c| {
+                // A reader bug must not take the running daemon down: the old configuration stays.
+                let loaded = std::panic::catch_unwind(|| load_config(&args.config, args.allow_insecure_config))
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("the configuration reader failed unexpectedly")));
+                match loaded.and_then(|c| {
                     linkscope_config::create_dirs(&c)?;
                     Ok(c)
                 }) {

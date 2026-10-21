@@ -144,12 +144,28 @@ impl V3Params {
         if get("authkey").is_some() || get("privkey").is_some() {
             return Err("SNMPv3 authkey/privkey (localized keys) are not supported; use authpassword/privpassword".into());
         }
+        // A security level is what was asked for or an error, never quietly less: a privacy
+        // password without authentication used to poll in clear, with no authentication.
+        let auth = get("authpassword");
+        let privacy = get("privpassword");
+        if auth.as_deref().is_some_and(str::is_empty) || privacy.as_deref().is_some_and(str::is_empty) {
+            return Err("SNMPv3 passwords must not be empty".into());
+        }
+        if auth.is_none() && (privacy.is_some() || get("privprotocol").is_some()) {
+            return Err("SNMPv3 privacy needs authentication: set authpassword too".into());
+        }
+        if auth.is_none() && get("authprotocol").is_some() {
+            return Err("SNMPv3 authprotocol is set without an authpassword".into());
+        }
+        if privacy.is_none() && get("privprotocol").is_some() {
+            return Err("SNMPv3 privprotocol is set without a privpassword".into());
+        }
         Ok(V3Params {
             username,
             auth_protocol: get("authprotocol").unwrap_or_else(|| "md5".into()).to_lowercase(),
-            auth_password: get("authpassword"),
+            auth_password: auth,
             priv_protocol: get("privprotocol").unwrap_or_else(|| "des".into()).to_lowercase(),
-            priv_password: get("privpassword"),
+            priv_password: privacy,
             context_name: get("contextname"),
         })
     }
@@ -546,6 +562,36 @@ impl SessionPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn v3_settings_are_complete_or_refused() {
+        let opts = |kv: &[(&str, &str)]| {
+            let mut o = SnmpOptions::new();
+            for (k, v) in kv {
+                o.insert((*k).into(), (*v).into());
+            }
+            o
+        };
+        // What was asked for: no security, authentication, authentication and privacy.
+        for ok in [
+            &[("username", "u")][..],
+            &[("username", "u"), ("authpassword", "authpass1"), ("authprotocol", "sha256")],
+            &[("username", "u"), ("authpassword", "authpass1"), ("privpassword", "privpass1"), ("privprotocol", "aes")],
+        ] {
+            assert!(V3Params::from_options(&opts(ok)).is_ok(), "{ok:?}");
+        }
+        // Less than was asked for, or a password that would panic the library: refused.
+        for bad in [
+            &[("username", "u"), ("privpassword", "privpass1")][..],
+            &[("username", "u"), ("privprotocol", "aes")],
+            &[("username", "u"), ("authprotocol", "sha")],
+            &[("username", "u"), ("authpassword", "authpass1"), ("privprotocol", "aes")],
+            &[("username", "u"), ("authpassword", "")],
+            &[("username", "u"), ("authpassword", "authpass1"), ("privpassword", "")],
+        ] {
+            assert!(V3Params::from_options(&opts(bad)).is_err(), "{bad:?}");
+        }
+    }
 
     #[test]
     fn uptime_format_matches_ber_pm() {

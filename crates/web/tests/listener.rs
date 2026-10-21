@@ -17,14 +17,14 @@ async fn a_request_whose_headers_never_end_is_closed() {
 
     // A request that answers at once still works.
     let mut ok = tokio::net::TcpStream::connect(addr).await.unwrap();
-    ok.write_all(b"GET /healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").await.unwrap();
+    ok.write_all(b"GET /healthz HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").await.unwrap();
     let mut reply = String::new();
     ok.read_to_string(&mut reply).await.unwrap();
     assert!(reply.starts_with("HTTP/1.1 200") && reply.ends_with("ok"), "{reply}");
 
     // Headers started and never finished: the server hangs up after HEADER_TIMEOUT.
     let mut slow = tokio::net::TcpStream::connect(addr).await.unwrap();
-    slow.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n").await.unwrap();
+    slow.write_all(b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n").await.unwrap();
     let started = Instant::now();
     let mut buf = [0u8; 1024];
     let read = tokio::time::timeout(HEADER_TIMEOUT + Duration::from_secs(5), slow.read(&mut buf)).await;

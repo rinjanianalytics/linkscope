@@ -236,6 +236,7 @@ dilaporkan saat berkas dimuat.
 | Kata kunci | Default | Arti |
 |---|---|---|
 | `WebListen` | tidak ada | **Baru.** Alamat dan port untuk antarmuka web, API JSON, dan `/metrics`, misalnya `127.0.0.1:8080` atau `[::1]:8080`. `--listen` mengesampingkannya. Tanpa keduanya, tidak ada listener web. |
+| `WebHosts` | tidak ada | **Baru.** Nama host yang dijawab antarmuka web, selain alamat IP dan `localhost`, dipisahkan koma atau spasi, misalnya `noc.example.com`. Permintaan untuk nama lain mendapat `421`: ini mencegah halaman web yang mengarahkan namanya sendiri ke alamat antarmuka (DNS rebinding) membacanya. `*` menjawab nama apa pun. |
 | `ExecShell` | no | **Baru.** `yes` mengizinkan perintah eksternal berjalan melalui `/bin/sh`. |
 | `AlertWebhook` | tidak ada | **Baru.** URL `http://` atau `https://` yang menerima POST bertanda tangan saat peringatan aktif atau pulih. Memerlukan `AlertWebhookSecret`. |
 | `AlertWebhookSecret` | tidak ada | **Baru.** Kunci penanda tangan, minimal 16 karakter. Memerlukan `AlertWebhook`. |

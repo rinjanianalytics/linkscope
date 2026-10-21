@@ -76,6 +76,9 @@ pub struct Global {
     pub icon_dir: Option<String>,
     /// LinkScope: address for the built-in web UI.
     pub web_listen: Option<String>,
+    /// LinkScope: `WebHosts:`, the host names the web UI answers to besides IP addresses and
+    /// `localhost` (`*`: any). Against DNS rebinding: the UI has no login.
+    pub web_hosts: Vec<String>,
     /// LinkScope: allow EXEC targets that need `/bin/sh` (pipes, redirects, ...).
     pub exec_shell: bool,
 }
@@ -483,6 +486,7 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         write_expires: yes(g.get("writeexpires")),
         icon_dir: g.get("icondir").cloned(),
         web_listen: g.get("weblisten").cloned(),
+        web_hosts: g.get("webhosts").and_then(|v| crate::rules::web_hosts(v)).unwrap_or_default(),
         exec_shell,
     };
 
