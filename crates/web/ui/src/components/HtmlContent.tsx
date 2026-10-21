@@ -5,6 +5,8 @@ interface HtmlContentProps {
   /** Must be one of the API's server-sanitized `*_html` / legend fields. */
   html: SanitizedHtml
   inline?: boolean
+  /** The manual's styles instead of those for HTML from the config (each styles tables its own way). */
+  prose?: boolean
   className?: string
 }
 
@@ -12,9 +14,9 @@ interface HtmlContentProps {
  * The single place the UI renders HTML. The type only accepts strings the API
  * marks as sanitized; everything else is rendered as React text.
  */
-export function HtmlContent({ html, inline, className }: HtmlContentProps) {
+export function HtmlContent({ html, inline, prose, className }: HtmlContentProps) {
   const Tag = inline ? 'span' : 'div'
-  return <Tag className={cn('mrtg-html', className)} dangerouslySetInnerHTML={{ __html: html }} />
+  return <Tag className={cn(prose ? 'doc-prose' : 'mrtg-html', className)} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 /** True when sanitized HTML has visible content. */

@@ -38,7 +38,7 @@ export default function App() {
         updatedAt={targets.updatedAt}
         loading={summary.loading || targets.loading}
       />
-      <main id="main" className="mx-auto w-full max-w-screen-2xl px-gutter py-section">
+      <main id="main" className="mx-auto w-full max-w-(--breakpoint-2xl) px-gutter py-section">
         <ErrorBoundary key={location}>
           <Switch>
             <Route path="/">
@@ -56,7 +56,7 @@ export default function App() {
           </Switch>
         </ErrorBoundary>
       </main>
-      <footer className="mx-auto w-full max-w-screen-2xl px-gutter pb-section text-xs text-muted-foreground">
+      <footer className="mx-auto w-full max-w-(--breakpoint-2xl) px-gutter pb-section text-xs text-muted-foreground">
         <span className="flex flex-wrap gap-x-2 gap-y-1">
           <span>LinkScope{summary.data ? ` ${summary.data.version}` : ''} by Rinjani Analytics</span>
           <span aria-hidden>·</span>

@@ -1,6 +1,240 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 1rem;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+@theme {
+  --font-sans: Poppins, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-display: var(--text-display);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: var(--tracking-display);
+  --text-display--font-weight: 600;
+  --text-title: var(--text-title);
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: var(--tracking-title);
+  --text-title--font-weight: 600;
+  --text-stat: var(--text-stat);
+  --text-stat--line-height: 1.1;
+  --text-stat--letter-spacing: var(--tracking-title);
+  --text-stat--font-weight: 600;
+  --text-label: var(--text-label);
+  --text-label--line-height: 1;
+  --text-label--letter-spacing: var(--tracking-label);
+  --text-label--font-weight: 600;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-brand-teal: hsl(var(--brand-teal));
+  --color-brand-mid: hsl(var(--brand-mid));
+  --color-brand-sage: hsl(var(--brand-sage));
+  --color-brand-slate: hsl(var(--brand-slate));
+  --color-brand-forest: hsl(var(--brand-forest));
+
+  --color-status-ok: hsl(var(--status-ok));
+  --color-status-ok-soft: hsl(var(--status-ok-soft));
+  --color-status-warn: hsl(var(--status-warn));
+  --color-status-warn-soft: hsl(var(--status-warn-soft));
+  --color-status-error: hsl(var(--status-error));
+  --color-status-error-soft: hsl(var(--status-error-soft));
+  --color-status-stale: hsl(var(--status-stale));
+  --color-status-stale-soft: hsl(var(--status-stale-soft));
+  --color-status-pending: hsl(var(--status-pending));
+  --color-status-pending-soft: hsl(var(--status-pending-soft));
+
+  --color-chart-in: hsl(var(--chart-in));
+  --color-chart-out: hsl(var(--chart-out));
+  --color-chart-in-peak: hsl(var(--chart-in-peak));
+  --color-chart-out-peak: hsl(var(--chart-out-peak));
+  --color-chart-grid: hsl(var(--chart-grid));
+
+  --radius-card: var(--radius-card);
+  --radius-lg: var(--radius-lg);
+  --radius-md: var(--radius-md);
+  --radius-sm: var(--radius-sm);
+  --radius-pill: 9999px;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-pop: var(--shadow-pop);
+
+  --spacing-gutter: var(--space-gutter);
+  --spacing-section: var(--space-section);
+  --spacing-card-pad: var(--space-card);
+
+  --height-chart: var(--chart-height);
+  --height-spark: var(--spark-height);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility perspective-coin {
+  /* 3D helpers for the theme coin (ThemeToggle). */
+  perspective: 240px;
+}
+
+@utility preserve-3d {
+  transform-style: preserve-3d;
+}
+
+@utility backface-hidden {
+  backface-visibility: hidden;
+}
+
+@utility rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+@utility duration-flip {
+  transition-duration: var(--motion-flip);
+}
+
+@utility mrtg-html {
+  /* Server-sanitized HTML from the MRTG config (PageTop, PageFoot, Legend*). */
+  & a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+  & p + p {
+    @apply mt-2;
+  }
+  & h1 {
+    @apply font-semibold tracking-tight;
+  }
+  & h2 {
+    @apply font-semibold tracking-tight;
+  }
+  & h3 {
+    @apply font-semibold tracking-tight;
+  }
+  & table {
+    @apply text-sm;
+  }
+  & td {
+    @apply px-2 py-1 text-left align-top;
+  }
+  & th {
+    @apply px-2 py-1 text-left align-top;
+  }
+  & img {
+    @apply inline-block max-w-full;
+  }
+}
+
+@utility doc-prose {
+  /* The manual (/docs): server-rendered Markdown, sanitized. */
+  @apply text-[0.95rem] leading-7 text-foreground;
+  & > * + * {
+    @apply mt-4;
+  }
+  & h2 {
+    @apply mt-10 scroll-mt-24 border-b border-border pb-2 text-xl font-semibold tracking-tight;
+  }
+  & h3 {
+    @apply mt-8 scroll-mt-24 text-lg font-semibold tracking-tight;
+  }
+  & h4 {
+    @apply mt-6 scroll-mt-24 font-semibold;
+  }
+  & a {
+    @apply font-medium text-primary underline underline-offset-4;
+  }
+  & ul {
+    @apply list-disc pl-6;
+  }
+  & ol {
+    @apply list-decimal pl-6;
+  }
+  & li + li {
+    @apply mt-1;
+  }
+  & li > ul {
+    @apply mt-1;
+  }
+  & li > ol {
+    @apply mt-1;
+  }
+  & blockquote {
+    @apply border-l-2 border-primary pl-4 text-muted-foreground;
+  }
+  & :not(pre) > code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] leading-[inherit];
+  }
+  & pre {
+    @apply overflow-x-auto rounded-lg border border-border bg-muted p-4 font-mono text-sm leading-6;
+  }
+  & table {
+    @apply block w-full overflow-x-auto text-sm;
+  }
+  & th {
+    @apply border-b border-border px-3 py-2 text-left align-bottom font-semibold;
+  }
+  & td {
+    @apply border-b border-border px-3 py-2 text-left align-top;
+  }
+  & hr {
+    @apply border-border;
+  }
+}
 
 /*
  * Design tokens. Values are HSL channels so Tailwind can apply alpha.
@@ -154,7 +388,7 @@
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-hidden ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -166,104 +400,6 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
-  }
-}
-
-@layer utilities {
-  /* 3D helpers for the theme coin (ThemeToggle). */
-  .perspective-coin {
-    perspective: 240px;
-  }
-  .preserve-3d {
-    transform-style: preserve-3d;
-  }
-  .backface-hidden {
-    backface-visibility: hidden;
-  }
-  .rotate-y-180 {
-    transform: rotateY(180deg);
-  }
-  .duration-flip {
-    transition-duration: var(--motion-flip);
-  }
-}
-
-@layer components {
-  /* Server-sanitized HTML from the MRTG config (PageTop, PageFoot, Legend*). */
-  .mrtg-html a {
-    @apply font-medium text-primary underline underline-offset-4;
-  }
-  .mrtg-html p + p {
-    @apply mt-2;
-  }
-  .mrtg-html h1,
-  .mrtg-html h2,
-  .mrtg-html h3 {
-    @apply font-semibold tracking-tight;
-  }
-  .mrtg-html table {
-    @apply text-sm;
-  }
-  .mrtg-html td,
-  .mrtg-html th {
-    @apply px-2 py-1 text-left align-top;
-  }
-  .mrtg-html img {
-    @apply inline-block max-w-full;
-  }
-
-  /* The manual (/docs): server-rendered Markdown, sanitized. */
-  .doc-prose {
-    @apply text-[0.95rem] leading-7 text-foreground;
-  }
-  .doc-prose > * + * {
-    @apply mt-4;
-  }
-  .doc-prose h2 {
-    @apply mt-10 scroll-mt-24 border-b border-border pb-2 text-xl font-semibold tracking-tight;
-  }
-  .doc-prose h3 {
-    @apply mt-8 scroll-mt-24 text-lg font-semibold tracking-tight;
-  }
-  .doc-prose h4 {
-    @apply mt-6 scroll-mt-24 font-semibold;
-  }
-  .doc-prose a {
-    @apply font-medium text-primary underline underline-offset-4;
-  }
-  .doc-prose ul {
-    @apply list-disc pl-6;
-  }
-  .doc-prose ol {
-    @apply list-decimal pl-6;
-  }
-  .doc-prose li + li {
-    @apply mt-1;
-  }
-  .doc-prose li > ul,
-  .doc-prose li > ol {
-    @apply mt-1;
-  }
-  .doc-prose blockquote {
-    @apply border-l-2 border-primary pl-4 text-muted-foreground;
-  }
-  .doc-prose :not(pre) > code {
-    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
-  }
-  .doc-prose pre {
-    @apply overflow-x-auto rounded-lg border border-border bg-muted p-4 font-mono text-sm leading-6;
-  }
-  .doc-prose table {
-    @apply block w-full overflow-x-auto text-sm;
-  }
-  .doc-prose th {
-    @apply border-b border-border px-3 py-2 text-left align-bottom font-semibold;
-  }
-  .doc-prose td {
-    @apply border-b border-border px-3 py-2 text-left align-top;
-  }
-  .doc-prose hr {
-    @apply border-border;
   }
 }
 

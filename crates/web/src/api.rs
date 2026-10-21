@@ -209,7 +209,9 @@ pub struct Summary {
     pub cycles: u64,
     pub last_cycle: Option<crate::state::CycleInfo>,
     pub interval_secs: u64,
-    pub config_path: String,
+    /// The configuration's file name. Not its path: the UI has no login, and where the server
+    /// keeps its files is not a viewer's business.
+    pub config_name: String,
     pub warnings: Vec<String>,
     pub targets_total: usize,
     pub targets_ok: usize,
@@ -457,7 +459,7 @@ pub async fn summary(State(state): State<SharedState>) -> ApiResult<Summary> {
         cycles: st.cycles,
         last_cycle: st.last_cycle.clone(),
         interval_secs: cfg.global.interval_secs,
-        config_path: cfg.path.display().to_string(),
+        config_name: cfg.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
         warnings: st.warnings.iter().map(|w| v.redact(w)).collect(),
         targets_total: rows.len(),
         targets_ok: rows.iter().filter(|s| **s == Status::Ok).count(),

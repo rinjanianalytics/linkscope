@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children
     return (
       <EmptyState icon={<AlertTriangle />} title="This screen failed to draw">
-        <p className="mb-4 break-words font-mono text-xs">{error.message || String(error)}</p>
+        <p className="mb-4 wrap-break-word font-mono text-xs">{error.message || String(error)}</p>
         <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
           <RotateCw aria-hidden />
           Reload

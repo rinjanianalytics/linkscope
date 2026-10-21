@@ -46,7 +46,7 @@ a safe subset: structure and text formatting, and links to `http` and `https` on
   "cycles": 12,
   "last_cycle": { "started": 1760943300, "duration_ms": 412, "targets": 24, "ok": 23, "failed": 1, "write_failures": 0 },
   "interval_secs": 300,
-  "config_path": "/etc/mrtg/mrtg.cfg",
+  "config_name": "mrtg.cfg",
   "warnings": [],
   "targets_total": 24,
   "targets_ok": 22,
@@ -66,7 +66,7 @@ a safe subset: structure and text formatting, and links to `http` and `https` on
 | `cycles` | number | Polling cycles completed. |
 | `last_cycle` | object or null | The last cycle: `started`, `duration_ms`, `targets`, `ok`, `failed`, `write_failures` (logs not read or written). Null before the first. |
 | `interval_secs` | number | Seconds between cycles. |
-| `config_path` | string | The configuration file. |
+| `config_name` | string | The configuration's file name (not its path, which the UI does not reveal). |
 | `warnings` | array of strings | Warnings from loading the configuration. |
 | `targets_total` | number | Targets configured. |
 | `targets_ok` | number | Targets with the status `ok`. |

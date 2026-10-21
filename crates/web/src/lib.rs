@@ -36,7 +36,18 @@ fn content_type(path: &str) -> &'static str {
 }
 
 async fn static_file(req: Request<Body>) -> Response<Body> {
+    // The UI's files are read, nothing else: an unknown API path is an error, not the UI's page.
+    if !matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD) {
+        return Response::builder().status(StatusCode::METHOD_NOT_ALLOWED).header(header::ALLOW, "GET, HEAD").body(Body::empty()).unwrap_or_default();
+    }
     let path = req.uri().path().trim_start_matches('/');
+    if path == "api" || path.starts_with("api/") {
+        return Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Body::from("no such API endpoint\n"))
+            .unwrap_or_default();
+    }
     let (file, path) = match UI.get_file(path) {
         Some(f) if !path.is_empty() => (f, path),
         // A stale hashed asset must fail clearly, not return the page.
@@ -96,6 +107,8 @@ async fn known_host(axum::extract::State(state): axum::extract::State<SharedStat
 
 /// Security headers on every response.
 async fn harden(req: Request<Body>, next: Next) -> Response<Body> {
+    // Live data is never kept by a browser or a proxy; the UI's files have their own caching.
+    let live = req.uri().path().starts_with("/api/") || req.uri().path() == "/metrics";
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     let set = |h: &mut axum::http::HeaderMap, k: &'static str, v: &'static str| {
@@ -105,6 +118,11 @@ async fn harden(req: Request<Body>, next: Next) -> Response<Body> {
     set(h, "x-content-type-options", "nosniff");
     set(h, "referrer-policy", "no-referrer");
     set(h, "x-frame-options", "DENY");
+    set(h, "cross-origin-opener-policy", "same-origin");
+    set(h, "cross-origin-resource-policy", "same-origin");
+    if live {
+        set(h, "cache-control", "no-store");
+    }
     res
 }
 
