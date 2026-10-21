@@ -32,8 +32,9 @@ repositori dan konfigurasi Anda.
    docker compose logs -f
    ```
 
-Compose menarik image yang sudah dipublikasikan, atau membangunnya dari repositori bila belum ada
-(pembangunan pertama memakan beberapa menit). Untuk membangun sendiri: `docker compose build`.
+Compose menarik image yang sudah dipublikasikan (untuk server amd64 dan arm64), atau membangunnya
+dari repositori bila belum ada (pembangunan pertama memakan beberapa menit). Untuk membangun sendiri:
+`docker compose build`.
 
 ### Apa yang disimpan kontainer dan di mana
 
