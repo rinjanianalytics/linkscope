@@ -19,7 +19,9 @@ fn load(dir: &Path, body: &str) -> linkscope_config::Config {
     std::fs::write(&path, format!("WorkDir: {}\n{body}", work.display())).unwrap();
     linkscope_config::load(
         &path,
-        &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off },
+        &linkscope_config::ReadOptions {
+            trust: linkscope_config::TrustPolicy::Off,
+        },
         &linkscope_config::CheckOptions::default(),
     )
     .unwrap()
@@ -27,7 +29,11 @@ fn load(dir: &Path, body: &str) -> linkscope_config::Config {
 
 fn state_files(dir: &Path) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(dir)
-        .map(|d| d.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+        .map(|d| {
+            d.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
         .unwrap_or_default();
     v.sort();
     v
@@ -49,7 +55,13 @@ ThreshMailAddress[r1]: noc@example.com
 ";
 
 /// Rates (in, out) for successive polls: broken in, both, cleared, broken again.
-const POLLS: &[(f64, f64)] = &[(52_118.0, 400.0), (52_118.0, 64.0), (60_000.0, 0.0), (10_000.0, 500.0), (40_000.5, 99.9)];
+const POLLS: &[(f64, f64)] = &[
+    (52_118.0, 400.0),
+    (52_118.0, 64.0),
+    (60_000.0, 0.0),
+    (10_000.0, 500.0),
+    (40_000.5, 99.9),
+];
 
 fn run(title: &str, cfg: &linkscope_config::Config, thresh_dir: Option<&Path>, out: &mut String) {
     let _ = writeln!(out, "== {title}");
@@ -72,11 +84,19 @@ fn thresholds_behave_as_mrtg() {
     let mut out = String::new();
 
     // No ThreshDir: every broken poll acts, nothing on recovery.
-    let plain = load(&tmp.path().join("a"), &format!("ThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\n{TARGETS}"));
+    let plain = load(
+        &tmp.path().join("a"),
+        &format!("ThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\n{TARGETS}"),
+    );
     run("without ThreshDir", &plain, None, &mut out);
 
     // ThreshHyst set explicitly, still without ThreshDir.
-    let hyst = load(&tmp.path().join("b"), &format!("ThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\nThreshHyst: 0.5\n{TARGETS}"));
+    let hyst = load(
+        &tmp.path().join("b"),
+        &format!(
+            "ThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\nThreshHyst: 0.5\n{TARGETS}"
+        ),
+    );
     run("ThreshHyst 0.5", &hyst, None, &mut out);
 
     // ThreshDir: once per transition, with state files.
@@ -84,7 +104,10 @@ fn thresholds_behave_as_mrtg() {
     std::fs::create_dir_all(&sd).unwrap();
     let dir = load(
         &tmp.path().join("c"),
-        &format!("ThreshDir: {}\nThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\n{TARGETS}", sd.display()),
+        &format!(
+            "ThreshDir: {}\nThreshMailServer: localhost\nThreshMailSender: mrtg@example.com\n{TARGETS}",
+            sd.display()
+        ),
     );
     run("with ThreshDir", &dir, Some(&sd), &mut out);
 
@@ -93,6 +116,7 @@ fn thresholds_behave_as_mrtg() {
         std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
         std::fs::write(&expected, &out).unwrap();
     }
-    let want = std::fs::read_to_string(&expected).expect("record the transcript first (see the module docs)");
+    let want = std::fs::read_to_string(&expected)
+        .expect("record the transcript first (see the module docs)");
     assert_eq!(out, want, "MRTG threshold behavior changed");
 }

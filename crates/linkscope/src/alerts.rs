@@ -152,7 +152,8 @@ impl Book {
     /// come back as [`Change::Removed`], so a receiver is told they ended.
     pub fn prune(&mut self, cfg: &Config) -> Vec<Event> {
         let mut events = Vec::new();
-        let configured: BTreeMap<&str, &Target> = cfg.targets.iter().map(|t| (t.name.as_str(), t)).collect();
+        let configured: BTreeMap<&str, &Target> =
+            cfg.targets.iter().map(|t| (t.name.as_str(), t)).collect();
         self.targets.retain(|name, bounds| {
             let t = configured.get(name.as_str());
             bounds.retain(|k, entry| {
@@ -169,7 +170,12 @@ impl Book {
                 if !keep {
                     self.dirty = true;
                     if entry.firing {
-                        events.push(Event { target: name.clone(), change: Change::Removed, entry: entry.clone(), eval: None });
+                        events.push(Event {
+                            target: name.clone(),
+                            change: Change::Removed,
+                            entry: entry.clone(),
+                            eval: None,
+                        });
                     }
                 }
                 keep
@@ -208,7 +214,12 @@ impl Book {
                 if !entry.firing && entry.polls >= need {
                     entry.firing = true;
                     entry.fired_at = Some(time);
-                    events.push(Event { target: t.name.clone(), change: Change::Fired, entry: entry.clone(), eval: Some(e.clone()) });
+                    events.push(Event {
+                        target: t.name.clone(),
+                        change: Change::Fired,
+                        entry: entry.clone(),
+                        eval: Some(e.clone()),
+                    });
                 }
                 self.dirty = true;
             } else if let Some(bounds) = self.targets.get_mut(&t.name) {
@@ -216,7 +227,12 @@ impl Book {
                     self.dirty = true;
                     if entry.firing {
                         entry.update(e, per, time);
-                        events.push(Event { target: t.name.clone(), change: Change::Cleared, entry, eval: Some(e.clone()) });
+                        events.push(Event {
+                            target: t.name.clone(),
+                            change: Change::Cleared,
+                            entry,
+                            eval: Some(e.clone()),
+                        });
                     }
                 }
                 if bounds.is_empty() {
@@ -294,7 +310,13 @@ fn plain(html: &str) -> String {
     use std::sync::LazyLock;
     static TAG: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"<[^>]*>").unwrap());
     let s = TAG.replace_all(html, "");
-    s.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&amp;", "&").trim().to_string()
+    s.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&amp;", "&")
+        .trim()
+        .to_string()
 }
 
 pub fn payload(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Payload {
@@ -303,7 +325,12 @@ pub fn payload(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Pay
     let per = if e.per > 0.0 { e.per } else { 1.0 };
     Payload {
         event: "threshold".into(),
-        state: if ev.change == Change::Fired { "firing" } else { "resolved" }.into(),
+        state: if ev.change == Change::Fired {
+            "firing"
+        } else {
+            "resolved"
+        }
+        .into(),
         reason: match ev.change {
             Change::Fired => None,
             Change::Cleared => Some("cleared".into()),
@@ -311,7 +338,9 @@ pub fn payload(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Pay
         },
         target: ev.target.clone(),
         title: t.map(|t| view.redact(&plain(&t.title))).unwrap_or_default(),
-        directory: t.map(|t| t.directory.trim_end_matches('/').to_string()).unwrap_or_default(),
+        directory: t
+            .map(|t| t.directory.trim_end_matches('/').to_string())
+            .unwrap_or_default(),
         direction: e.direction.clone(),
         bound: e.bound.clone(),
         threshold: e.threshold.clone(),
@@ -321,7 +350,9 @@ pub fn payload(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Pay
         polls: e.polls,
         since: e.since,
         time: e.time,
-        description: t.and_then(|t| t.thresholds.desc.as_deref()).map(|d| view.redact(d)),
+        description: t
+            .and_then(|t| t.thresholds.desc.as_deref())
+            .map(|d| view.redact(d)),
         linkscope: env!("CARGO_PKG_VERSION").into(),
     }
 }
@@ -330,7 +361,10 @@ pub fn payload(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Pay
 pub fn webhook(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Option<Action> {
     cfg.global.alert_webhook.as_ref()?;
     let body = serde_json::to_string(&payload(cfg, view, ev)).ok()?;
-    Some(Action::Webhook { target: ev.target.clone(), body })
+    Some(Action::Webhook {
+        target: ev.target.clone(),
+        body,
+    })
 }
 
 /// `X-LinkScope-Signature`: `sha256=` and the hex HMAC-SHA256, keyed with
@@ -364,13 +398,20 @@ fn delivery_id() -> String {
     use std::hash::{BuildHasher, Hasher};
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
     h.write_u128(nanos);
     h.write_u64(n);
     h.write_u32(std::process::id());
-    format!("{:016x}{:016x}", h.finish(), (nanos as u64) ^ n.rotate_left(32))
+    format!(
+        "{:016x}{:016x}",
+        h.finish(),
+        (nanos as u64) ^ n.rotate_left(32)
+    )
 }
 
 impl Hook {
@@ -385,7 +426,12 @@ impl Hook {
             .user_agent(concat!("LinkScope/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| anyhow::anyhow!("{}", e.without_url()))?;
-        Ok(Hook { url: url.to_string(), secret: secret.as_bytes().to_vec(), client, waits: [0, 2, 10] })
+        Ok(Hook {
+            url: url.to_string(),
+            secret: secret.as_bytes().to_vec(),
+            client,
+            waits: [0, 2, 10],
+        })
     }
 
     /// Post one body. Retries after 2 s and 10 s on a network error, a 5xx
@@ -396,7 +442,10 @@ impl Hook {
         let delivery = delivery_id();
         for wait in self.waits {
             tokio::time::sleep(Duration::from_secs(wait)).await;
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
             let res = self
                 .client
                 .post(&self.url)
@@ -414,7 +463,10 @@ impl Hook {
                     return;
                 }
                 Ok(r) if !(r.status().is_server_error() || r.status().as_u16() == 429) => {
-                    tracing::warn!("alert webhook for {target} refused: HTTP {}", r.status().as_u16());
+                    tracing::warn!(
+                        "alert webhook for {target} refused: HTTP {}",
+                        r.status().as_u16()
+                    );
                     return;
                 }
                 Ok(r) => last = format!("HTTP {}", r.status().as_u16()),
@@ -438,7 +490,11 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
             let mut seen = Vec::new();
-            for status in ["500 Internal Server Error", "503 Service Unavailable", "200 OK"] {
+            for status in [
+                "500 Internal Server Error",
+                "503 Service Unavailable",
+                "200 OK",
+            ] {
                 let (mut sock, _) = listener.accept().await.unwrap();
                 let mut req = Vec::new();
                 let mut buf = [0u8; 4096];
@@ -448,28 +504,58 @@ mod tests {
                     req.extend_from_slice(&buf[..n]);
                     let text = String::from_utf8_lossy(&req).to_string();
                     if let Some(end) = text.find("\r\n\r\n") {
-                        let len = text.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                        let len = text
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
                         if req.len() >= end + 4 + len || n == 0 {
                             break;
                         }
                     }
                 }
-                sock.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                sock.write_all(
+                    format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
                 seen.push(String::from_utf8_lossy(&req).to_string());
             }
             seen
         });
-        let mut hook = Hook::new(&format!("http://{addr}/hook"), "0123456789abcdef-secret").unwrap();
+        let mut hook =
+            Hook::new(&format!("http://{addr}/hook"), "0123456789abcdef-secret").unwrap();
         hook.waits = [0, 0, 0];
         hook.send("r1", r#"{"event":"threshold"}"#.into()).await;
         let seen = server.await.unwrap();
         assert_eq!(seen.len(), 3);
-        let header = |req: &str, name: &str| req.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_string())).unwrap();
-        let ids: Vec<String> = seen.iter().map(|r| header(r, "x-linkscope-delivery")).collect();
-        assert!(ids[0].len() == 32 && ids.iter().all(|i| *i == ids[0]), "{ids:?}");
+        let header = |req: &str, name: &str| {
+            req.lines()
+                .find_map(|l| {
+                    l.split_once(':')
+                        .filter(|(k, _)| k.eq_ignore_ascii_case(name))
+                        .map(|(_, v)| v.trim().to_string())
+                })
+                .unwrap()
+        };
+        let ids: Vec<String> = seen
+            .iter()
+            .map(|r| header(r, "x-linkscope-delivery"))
+            .collect();
+        assert!(
+            ids[0].len() == 32 && ids.iter().all(|i| *i == ids[0]),
+            "{ids:?}"
+        );
         for r in &seen {
             let ts: i64 = header(r, "x-linkscope-timestamp").parse().unwrap();
-            assert_eq!(header(r, "x-linkscope-signature"), sign(b"0123456789abcdef-secret", ts, r#"{"event":"threshold"}"#));
+            assert_eq!(
+                header(r, "x-linkscope-signature"),
+                sign(b"0123456789abcdef-secret", ts, r#"{"event":"threshold"}"#)
+            );
         }
         // Another notice, another id.
         assert_ne!(delivery_id(), ids[0]);
@@ -482,7 +568,9 @@ mod tests {
         std::fs::write(&path, format!("WorkDir: {}\n{body}", work.display())).unwrap();
         linkscope_config::load(
             &path,
-            &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off },
+            &linkscope_config::ReadOptions {
+                trust: linkscope_config::TrustPolicy::Off,
+            },
             &linkscope_config::CheckOptions::default(),
         )
         .unwrap()
@@ -496,14 +584,22 @@ mod tests {
         let c = cfg(d.path(), &format!("{T}ThreshFor[r1]: 2\n"));
         let t = &c.targets[0];
         let mut b = Book::default();
-        let poll = |b: &mut Book, r: f64, time| b.observe(t, &crate::thresh::evaluate(t, Some(r), Some(500.0)), time);
-        assert!(poll(&mut b, 52_118.0, 100).is_empty(), "one broken poll is not enough");
+        let poll = |b: &mut Book, r: f64, time| {
+            b.observe(t, &crate::thresh::evaluate(t, Some(r), Some(500.0)), time)
+        };
+        assert!(
+            poll(&mut b, 52_118.0, 100).is_empty(),
+            "one broken poll is not enough"
+        );
         assert_eq!(b.live(t)[0].polls, 1);
         assert!(!b.live(t)[0].firing);
         let ev = poll(&mut b, 52_118.0, 400);
         assert_eq!(ev.len(), 1);
         assert_eq!(ev[0].change, Change::Fired);
-        assert_eq!((ev[0].entry.since, ev[0].entry.fired_at, ev[0].entry.polls), (100, Some(400), 2));
+        assert_eq!(
+            (ev[0].entry.since, ev[0].entry.fired_at, ev[0].entry.polls),
+            (100, Some(400), 2)
+        );
         assert!(poll(&mut b, 60_000.0, 700).is_empty(), "fires once");
         assert!(b.live(t)[0].firing);
         let ev = poll(&mut b, 10_000.0, 1000);
@@ -519,8 +615,18 @@ mod tests {
         let c = cfg(d.path(), &format!("{T}ThreshFor[r1]: 3\n"));
         let t = &c.targets[0];
         let mut b = Book::default();
-        for (i, r) in [52_118.0, 52_118.0, 1_000.0, 52_118.0, 52_118.0].iter().enumerate() {
-            assert!(b.observe(t, &crate::thresh::evaluate(t, Some(*r), Some(500.0)), i as i64).is_empty());
+        for (i, r) in [52_118.0, 52_118.0, 1_000.0, 52_118.0, 52_118.0]
+            .iter()
+            .enumerate()
+        {
+            assert!(
+                b.observe(
+                    t,
+                    &crate::thresh::evaluate(t, Some(*r), Some(500.0)),
+                    i as i64
+                )
+                .is_empty()
+            );
         }
         assert_eq!(b.live(t)[0].polls, 2);
     }
@@ -531,10 +637,22 @@ mod tests {
         let c = cfg(d.path(), T);
         let t = &c.targets[0];
         let mut b = Book::default();
-        let ev = b.observe(t, &crate::thresh::evaluate(t, Some(52_118.0), Some(64.0)), 1);
-        assert_eq!(ev.iter().map(|e| (e.entry.bound.as_str(), e.entry.direction.as_str())).collect::<Vec<_>>(), [("max", "in"), ("min", "out")]);
+        let ev = b.observe(
+            t,
+            &crate::thresh::evaluate(t, Some(52_118.0), Some(64.0)),
+            1,
+        );
+        assert_eq!(
+            ev.iter()
+                .map(|e| (e.entry.bound.as_str(), e.entry.direction.as_str()))
+                .collect::<Vec<_>>(),
+            [("max", "in"), ("min", "out")]
+        );
         // No rate for either direction this poll.
-        assert!(b.observe(t, &crate::thresh::evaluate(t, None, None), 2).is_empty());
+        assert!(
+            b.observe(t, &crate::thresh::evaluate(t, None, None), 2)
+                .is_empty()
+        );
         assert_eq!(b.live(t).len(), 2);
     }
 
@@ -544,13 +662,29 @@ mod tests {
         let c = cfg(d.path(), T);
         let t = &c.targets[0];
         let mut b = Book::default();
-        b.observe(t, &crate::thresh::evaluate(t, Some(52_118.0), Some(500.0)), 1);
+        b.observe(
+            t,
+            &crate::thresh::evaluate(t, Some(52_118.0), Some(500.0)),
+            1,
+        );
         let p = d.path().join("m.alerts");
         b.save(&p).unwrap();
         let mut again = Book::load(&p);
         assert!(again.prune(&c).is_empty());
-        assert!(again.observe(t, &crate::thresh::evaluate(t, Some(52_118.0), Some(500.0)), 2).is_empty(), "already firing");
-        let c2 = cfg(&d.path().join("b"), "Target[r1]: 1:pub-lic@10.0.0.1\nMaxBytes[r1]: 125000\nTitle[r1]: R1\nThreshMinO[r1]: 100\n");
+        assert!(
+            again
+                .observe(
+                    t,
+                    &crate::thresh::evaluate(t, Some(52_118.0), Some(500.0)),
+                    2
+                )
+                .is_empty(),
+            "already firing"
+        );
+        let c2 = cfg(
+            &d.path().join("b"),
+            "Target[r1]: 1:pub-lic@10.0.0.1\nMaxBytes[r1]: 125000\nTitle[r1]: R1\nThreshMinO[r1]: 100\n",
+        );
         let ev = again.prune(&c2);
         assert_eq!(ev.len(), 1);
         assert_eq!(ev[0].change, Change::Removed);
@@ -576,27 +710,54 @@ mod tests {
                     buf.extend_from_slice(&chunk[..n]);
                     let text = String::from_utf8_lossy(&buf).into_owned();
                     if let Some((h, b)) = text.split_once("\r\n\r\n") {
-                        let len: usize = h.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length: ").map(|v| v.trim().parse().unwrap())).unwrap();
+                        let len: usize = h
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length: ")
+                                    .map(|v| v.trim().parse().unwrap())
+                            })
+                            .unwrap();
                         if b.len() >= len {
                             break (h.to_string(), b[..len].to_string());
                         }
                     }
                 };
-                s.write_all(format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                s.write_all(
+                    format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
                 seen.push((head, body));
             }
             seen
         });
-        let hook = Hook::new(&format!("http://{addr}/hook/tok-SECRET"), "0123456789abcdef").unwrap();
+        let hook = Hook::new(
+            &format!("http://{addr}/hook/tok-SECRET"),
+            "0123456789abcdef",
+        )
+        .unwrap();
         hook.send("r1", "{\"state\":\"firing\"}".into()).await;
         let seen = server.await.unwrap();
         assert_eq!(seen.len(), 2);
         for (head, body) in &seen {
-            let h = |name: &str| head.lines().find_map(|l| l.to_ascii_lowercase().starts_with(name).then(|| l[name.len()..].trim().to_string())).unwrap();
+            let h = |name: &str| {
+                head.lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .starts_with(name)
+                            .then(|| l[name.len()..].trim().to_string())
+                    })
+                    .unwrap()
+            };
             assert!(head.starts_with("POST /hook/tok-SECRET HTTP/1.1"));
             assert_eq!(body, "{\"state\":\"firing\"}");
             let ts: i64 = h("x-linkscope-timestamp:").parse().unwrap();
-            assert_eq!(h("x-linkscope-signature:"), sign(b"0123456789abcdef", ts, body));
+            assert_eq!(
+                h("x-linkscope-signature:"),
+                sign(b"0123456789abcdef", ts, body)
+            );
             assert_eq!(h("content-type:"), "application/json");
         }
     }
@@ -604,19 +765,35 @@ mod tests {
     #[test]
     fn payload_and_signature() {
         let d = tempfile::tempdir().unwrap();
-        let c = std::sync::Arc::new(cfg(d.path(), &format!("{T}ThreshDesc[r1]: uplink, community pub-lic\nOptions[r1]: perminute\n")));
+        let c = std::sync::Arc::new(cfg(
+            d.path(),
+            &format!("{T}ThreshDesc[r1]: uplink, community pub-lic\nOptions[r1]: perminute\n"),
+        ));
         let t = &c.targets[0];
         let mut b = Book::default();
-        let ev = b.observe(t, &crate::thresh::evaluate(t, Some(60.0 * 52_118.0), Some(60.0 * 500.0)), 1_700_000_000);
+        let ev = b.observe(
+            t,
+            &crate::thresh::evaluate(t, Some(60.0 * 52_118.0), Some(60.0 * 500.0)),
+            1_700_000_000,
+        );
         let view = linkscope_web::api::view(&c);
         let p = payload(&c, &view, &ev[0]);
-        assert_eq!((p.state.as_str(), p.reason, p.title.as_str()), ("firing", None, "R1 ether2"));
-        assert_eq!((p.direction.as_str(), p.bound.as_str(), p.threshold.as_str()), ("in", "max", "30%"));
+        assert_eq!(
+            (p.state.as_str(), p.reason, p.title.as_str()),
+            ("firing", None, "R1 ether2")
+        );
+        assert_eq!(
+            (p.direction.as_str(), p.bound.as_str(), p.threshold.as_str()),
+            ("in", "max", "30%")
+        );
         // perminute: the log counts per minute, the webhook per second
         // (MaxBytes is per minute too: 30% of 125000 per minute).
         assert_eq!((p.rate, p.threshold_rate), (52_118.0, 625.0));
         assert_eq!(p.description.as_deref(), Some("uplink, community •••"));
         // Known answer, from Python's hmac: HMAC-SHA256("secret", "1700000000.{}").
-        assert_eq!(sign(b"secret", 1_700_000_000, "{}"), "sha256=b8569b78799ff9e3cbff0fc2d63a33a2b57f3282abd07c37ae5e8e7d79a5f163");
+        assert_eq!(
+            sign(b"secret", 1_700_000_000, "{}"),
+            "sha256=b8569b78799ff9e3cbff0fc2d63a33a2b57f3282abd07c37ae5e8e7d79a5f163"
+        );
     }
 }

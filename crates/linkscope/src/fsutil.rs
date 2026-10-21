@@ -38,7 +38,11 @@ pub const MAX_STATE_BYTES: u64 = 64 * 1024 * 1024;
 pub fn read_state(path: &Path, max: u64) -> std::io::Result<Option<(Vec<u8>, bool)>> {
     use std::io::Read;
     use std::os::unix::fs::PermissionsExt;
-    let f = match OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(path) {
+    let f = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)
+    {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e),
@@ -56,7 +60,10 @@ fn temp_name(path: &Path) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     path.with_file_name(format!(".{name}.tmp_{}_{n}", std::process::id()))
 }
 
@@ -89,6 +96,11 @@ mod tests {
         write_atomic(&link, b"new", 0o644).unwrap();
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
         assert_eq!(std::fs::read_to_string(&link).unwrap(), "new");
-        assert!(!std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert!(
+            !std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 }

@@ -31,8 +31,14 @@ pub(crate) fn diff(a: &[u8], b: &[u8]) -> Result<f64, InputError> {
         a = na;
         b = nb;
     }
-    a = &a[a.iter().position(u8::is_ascii_digit).ok_or(InputError::NoDigits)?..];
-    b = &b[b.iter().position(u8::is_ascii_digit).ok_or(InputError::NoDigits)?..];
+    a = &a[a
+        .iter()
+        .position(u8::is_ascii_digit)
+        .ok_or(InputError::NoDigits)?..];
+    b = &b[b
+        .iter()
+        .position(u8::is_ascii_digit)
+        .ok_or(InputError::NoDigits)?..];
     // The strings are NUL terminated in C; stop at an embedded NUL.
     a = until_nul(a);
     b = until_nul(b);

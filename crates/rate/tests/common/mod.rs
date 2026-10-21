@@ -10,7 +10,8 @@ use linkscope_rate::{Mode, Period, Summary, SummaryOpts};
 
 /// Location of the reference binary (override with `MRTG_RATEUP`).
 pub fn rateup_path() -> PathBuf {
-    std::env::var_os("MRTG_RATEUP").map_or_else(|| PathBuf::from("/home/claude/build/rateup"), PathBuf::from)
+    std::env::var_os("MRTG_RATEUP")
+        .map_or_else(|| PathBuf::from("/home/claude/build/rateup"), PathBuf::from)
 }
 
 /// Returns the binary path, or prints a notice and returns `None` so the
@@ -27,7 +28,10 @@ pub fn rateup() -> Option<PathBuf> {
 
 /// Number from an environment variable, with a default.
 pub fn env_num(name: &str, default: u64) -> u64 {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 /// Small deterministic PRNG (SplitMix64); no external crates needed.
@@ -131,7 +135,10 @@ pub fn run_c(
         if dorel {
             letter.push('p');
         }
-        cmd.arg(letter).arg(&u.input).arg(&u.output).arg(u.abs_max.to_string());
+        cmd.arg(letter)
+            .arg(&u.input)
+            .arg(&u.output)
+            .arg(u.abs_max.to_string());
     }
     cmd.args(flags);
     for (k, im) in imgs.iter().enumerate() {
@@ -154,7 +161,10 @@ pub fn run_c(
     }
     let out = cmd.output().expect("spawn rateup");
     let text = String::from_utf8_lossy(&out.stdout);
-    let nums: Vec<i64> = text.lines().map(|l| l.trim().parse().expect("rateup printed a non-number")).collect();
+    let nums: Vec<i64> = text
+        .lines()
+        .map(|l| l.trim().parse().expect("rateup printed a non-number"))
+        .collect();
     let mut per = Vec::new();
     let mut it = nums.into_iter();
     for im in imgs {

@@ -31,10 +31,15 @@ pub const FHS_LOG: &str = "/var/log/mrtg/mrtg.log";
 /// anything that is not a real directory.
 pub fn ensure_owned_dir(dir: &Path, uid: Uid, gid: Gid) -> Result<()> {
     match std::fs::symlink_metadata(dir) {
-        Ok(m) if m.file_type().is_symlink() => bail!("{} is a symlink; refusing to use it", dir.display()),
+        Ok(m) if m.file_type().is_symlink() => {
+            bail!("{} is a symlink; refusing to use it", dir.display())
+        }
         Ok(m) if !m.is_dir() => bail!("{} exists and is not a directory", dir.display()),
         Ok(_) => {}
-        Err(_) => std::fs::DirBuilder::new().mode(0o755).create(dir).with_context(|| format!("creating {}", dir.display()))?,
+        Err(_) => std::fs::DirBuilder::new()
+            .mode(0o755)
+            .create(dir)
+            .with_context(|| format!("creating {}", dir.display()))?,
     }
     let fd = OpenOptions::new()
         .read(true)
@@ -42,7 +47,8 @@ pub fn ensure_owned_dir(dir: &Path, uid: Uid, gid: Gid) -> Result<()> {
         .open(dir)
         .with_context(|| format!("opening {}", dir.display()))?;
     if fd.metadata()?.uid() != uid.as_raw() || fd.metadata()?.gid() != gid.as_raw() {
-        nix::unistd::fchown(fd.as_raw_fd(), Some(uid), Some(gid)).with_context(|| format!("chown {}", dir.display()))?;
+        nix::unistd::fchown(fd.as_raw_fd(), Some(uid), Some(gid))
+            .with_context(|| format!("chown {}", dir.display()))?;
     }
     Ok(())
 }
@@ -64,9 +70,13 @@ impl PidFile {
             match crate::fsutil::create_new(path, 0o644) {
                 Ok(file) => {
                     if let Some((u, g)) = owner {
-                        nix::unistd::fchown(file.as_raw_fd(), Some(u), Some(g)).context("chown pid file")?;
+                        nix::unistd::fchown(file.as_raw_fd(), Some(u), Some(g))
+                            .context("chown pid file")?;
                     }
-                    let mut p = PidFile { file, path: path.to_path_buf() };
+                    let mut p = PidFile {
+                        file,
+                        path: path.to_path_buf(),
+                    };
                     p.write_current()?;
                     return Ok(p);
                 }
@@ -75,9 +85,12 @@ impl PidFile {
                         bail!("{} is a directory", path.display());
                     }
                     // Unlinking removes a symlink itself, never what it points to.
-                    std::fs::remove_file(path).with_context(|| format!("removing stale {}", path.display()))?;
+                    std::fs::remove_file(path)
+                        .with_context(|| format!("removing stale {}", path.display()))?;
                 }
-                Err(e) => return Err(e).with_context(|| format!("creating pid file {}", path.display())),
+                Err(e) => {
+                    return Err(e).with_context(|| format!("creating pid file {}", path.display()));
+                }
             }
         }
         bail!("could not create pid file {}", path.display())
@@ -122,7 +135,10 @@ pub fn acquire_lock(path: &Path) -> Result<Lock> {
     // SAFETY: flock is called on a valid, owned descriptor.
     let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if rc != 0 {
-        bail!("another LinkScope instance is running with this configuration (lock {} is held)", path.display());
+        bail!(
+            "another LinkScope instance is running with this configuration (lock {} is held)",
+            path.display()
+        );
     }
     Ok(Lock { _file: file })
 }
@@ -143,7 +159,11 @@ pub fn lookup_ids(user: Option<&str>, group: Option<&str>) -> Result<Option<(Uid
     let gid = match group {
         Some(g) => match g.parse::<u32>() {
             Ok(n) => Gid::from_raw(n),
-            Err(_) => nix::unistd::Group::from_name(g)?.with_context(|| format!("unknown group {g}"))?.gid,
+            Err(_) => {
+                nix::unistd::Group::from_name(g)?
+                    .with_context(|| format!("unknown group {g}"))?
+                    .gid
+            }
         },
         None => u.gid,
     };
@@ -157,8 +177,13 @@ pub fn drop_privileges(uid: Uid, gid: Gid) -> Result<()> {
     }
     nix::unistd::setgid(gid).context("setgid")?;
     nix::unistd::setuid(uid).context("setuid")?;
-    let ok = Uid::current() == uid && Uid::effective() == uid && Gid::current() == gid && Gid::effective() == gid;
-    let groups_ok = nix::unistd::getgroups().map(|g| g.iter().all(|x| *x == gid)).unwrap_or(false);
+    let ok = Uid::current() == uid
+        && Uid::effective() == uid
+        && Gid::current() == gid
+        && Gid::effective() == gid;
+    let groups_ok = nix::unistd::getgroups()
+        .map(|g| g.iter().all(|x| *x == gid))
+        .unwrap_or(false);
     if !ok || !groups_ok {
         bail!("failed to drop privileges to uid {uid} gid {gid}");
     }
@@ -183,7 +208,10 @@ pub fn daemonize() -> Result<()> {
         ForkResult::Child => {}
     }
     setsid().context("setsid")?;
-    let null = OpenOptions::new().read(true).write(true).open("/dev/null")?;
+    let null = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/null")?;
     for fd in 0..=2 {
         // SAFETY: dup2 onto the standard descriptors with a valid source fd.
         unsafe { libc::dup2(null.as_raw_fd(), fd) };
@@ -206,7 +234,10 @@ mod tests {
         let p = dir.path().join("x.pid");
         std::fs::write(&p, format!("{}\n", std::process::id())).unwrap();
         let pf = PidFile::create(&p, None).unwrap();
-        assert_eq!(std::fs::read_to_string(&p).unwrap().trim(), std::process::id().to_string());
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap().trim(),
+            std::process::id().to_string()
+        );
         drop(pf);
         assert!(!p.exists());
 
@@ -215,7 +246,12 @@ mod tests {
         std::os::unix::fs::symlink(&victim, &p).unwrap();
         let pf = PidFile::create(&p, None).unwrap();
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "data");
-        assert!(!std::fs::symlink_metadata(&p).unwrap().file_type().is_symlink());
+        assert!(
+            !std::fs::symlink_metadata(&p)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         drop(pf);
 
         nix::unistd::mkfifo(&p, nix::sys::stat::Mode::from_bits_truncate(0o600)).unwrap();
@@ -225,7 +261,10 @@ mod tests {
 
         let lock = dir.path().join("x_l");
         let held = acquire_lock(&lock).unwrap();
-        assert!(acquire_lock(&lock).is_err(), "a second instance is kept out by the lock");
+        assert!(
+            acquire_lock(&lock).is_err(),
+            "a second instance is kept out by the lock"
+        );
         drop(held);
     }
 

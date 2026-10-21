@@ -17,8 +17,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use async_snmp::{
+    Auth, AuthProtocol, Client, Oid, PrivProtocol, Retry, UdpHandle, UsmConfig, Value, VarBind,
+};
 use linkscope_config::{SnmpOptions, SnmpSource, SnmpVersion};
-use async_snmp::{Auth, AuthProtocol, Client, Oid, PrivProtocol, Retry, UdpHandle, UsmConfig, Value, VarBind};
 use tokio::sync::Mutex;
 
 use crate::oids::parse_numeric;
@@ -45,7 +47,9 @@ impl Val {
     fn from_value(v: &Value) -> Val {
         match v {
             Value::Integer(i) => Val::Int(i64::from(*i)),
-            Value::Counter32(c) | Value::Gauge32(c) | Value::UInteger32(c) => Val::Unsigned(u64::from(*c)),
+            Value::Counter32(c) | Value::Gauge32(c) | Value::UInteger32(c) => {
+                Val::Unsigned(u64::from(*c))
+            }
             Value::Counter64(c) => Val::Counter64(*c),
             Value::TimeTicks(t) => Val::TimeTicks(*t),
             Value::OctetString(s) => Val::Str(s.to_vec()),
@@ -89,10 +93,16 @@ impl Val {
                 // Some agents return numbers as strings (e.g. UCD-SNMP); MRTG
                 // accepted those after trimming.
                 let t = String::from_utf8_lossy(s).trim().to_string();
-                let ok = !t.is_empty() && t.trim_start_matches(['+', '-']).split_once('.').map_or(
-                    t.trim_start_matches(['+', '-']).bytes().all(|b| b.is_ascii_digit()),
-                    |(a, b)| a.bytes().all(|x| x.is_ascii_digit()) && b.bytes().all(|x| x.is_ascii_digit()),
-                );
+                let ok = !t.is_empty()
+                    && t.trim_start_matches(['+', '-']).split_once('.').map_or(
+                        t.trim_start_matches(['+', '-'])
+                            .bytes()
+                            .all(|b| b.is_ascii_digit()),
+                        |(a, b)| {
+                            a.bytes().all(|x| x.is_ascii_digit())
+                                && b.bytes().all(|x| x.is_ascii_digit())
+                        },
+                    );
                 ok.then_some(t)
             }
             _ => None,
@@ -150,7 +160,9 @@ impl V3Params {
         let privacy = get("privpassword");
         // USM derives its keys from a password of at least eight octets (RFC 3414); net-snmp and
         // the SNMP library refuse shorter ones too.
-        if auth.as_deref().is_some_and(|a| a.len() < 8) || privacy.as_deref().is_some_and(|p| p.len() < 8) {
+        if auth.as_deref().is_some_and(|a| a.len() < 8)
+            || privacy.as_deref().is_some_and(|p| p.len() < 8)
+        {
             return Err("SNMPv3 passwords must be at least 8 characters long".into());
         }
         if auth.is_none() && (privacy.is_some() || get("privprotocol").is_some()) {
@@ -164,9 +176,13 @@ impl V3Params {
         }
         Ok(V3Params {
             username,
-            auth_protocol: get("authprotocol").unwrap_or_else(|| "md5".into()).to_lowercase(),
+            auth_protocol: get("authprotocol")
+                .unwrap_or_else(|| "md5".into())
+                .to_lowercase(),
             auth_password: auth,
-            priv_protocol: get("privprotocol").unwrap_or_else(|| "des".into()).to_lowercase(),
+            priv_protocol: get("privprotocol")
+                .unwrap_or_else(|| "des".into())
+                .to_lowercase(),
             priv_password: privacy,
             context_name: get("contextname"),
         })
@@ -197,7 +213,8 @@ impl V3Params {
                     "aes256c" => PrivProtocol::Aes256Reeder,
                     c => return Err(format!("unknown privprotocol '{c}'")),
                 };
-                usm.auth_priv(auth, a.as_bytes(), cipher, p.as_bytes()).map_err(|e| e.to_string())?
+                usm.auth_priv(auth, a.as_bytes(), cipher, p.as_bytes())
+                    .map_err(|e| e.to_string())?
             }
             (Some(a), None) => usm.auth(auth, a.as_bytes()).map_err(|e| e.to_string())?,
             _ => usm,
@@ -234,20 +251,49 @@ impl Endpoint {
     pub fn from_source(s: &SnmpSource, single_request: bool) -> Result<Endpoint, String> {
         let o = &s.snmp_options;
         // Only finite numbers count; "nan" or "inf" fall back to defaults.
-        let num = |k: &str| o.get(k).and_then(|v| v.parse::<f64>().ok()).filter(|v| v.is_finite());
+        let num = |k: &str| {
+            o.get(k)
+                .and_then(|v| v.parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+        };
         let fin = |v: Option<f64>| v.filter(|x| x.is_finite());
-        let v3 = if s.conn.version == SnmpVersion::V3 { Some(V3Params::from_options(o)?) } else { None };
+        let v3 = if s.conn.version == SnmpVersion::V3 {
+            Some(V3Params::from_options(o)?)
+        } else {
+            None
+        };
         Ok(Endpoint {
             host: s.host.clone(),
-            port: s.conn.port.or_else(|| num("port").map(|p| p as u16)).unwrap_or(161),
+            port: s
+                .conn
+                .port
+                .or_else(|| num("port").map(|p| p as u16))
+                .unwrap_or(161),
             version: s.conn.version,
             community: s.community.clone(),
             v3,
-            timeout: Duration::from_secs_f64(fin(s.conn.timeout).or_else(|| num("timeout")).unwrap_or(2.0).clamp(0.05, 300.0)),
-            retries: s.conn.retries.or_else(|| num("retries").map(|r| r as u32)).unwrap_or(5).min(50),
-            backoff: fin(s.conn.backoff).or_else(|| num("backoff")).unwrap_or(1.0).clamp(1.0, 10.0),
+            timeout: Duration::from_secs_f64(
+                fin(s.conn.timeout)
+                    .or_else(|| num("timeout"))
+                    .unwrap_or(2.0)
+                    .clamp(0.05, 300.0),
+            ),
+            retries: s
+                .conn
+                .retries
+                .or_else(|| num("retries").map(|r| r as u32))
+                .unwrap_or(5)
+                .min(50),
+            backoff: fin(s.conn.backoff)
+                .or_else(|| num("backoff"))
+                .unwrap_or(1.0)
+                .clamp(1.0, 10.0),
             ipv4only: s.ipv4only || s.conn.v4only,
-            max_repetitions: num("default_max_repetitions").or_else(|| num("maxrepetitions")).map(|r| r as u32).unwrap_or(25).clamp(1, 200),
+            max_repetitions: num("default_max_repetitions")
+                .or_else(|| num("maxrepetitions"))
+                .map(|r| r as u32)
+                .unwrap_or(25)
+                .clamp(1, 200),
             use_getbulk: num("use_getbulk").map(|v| v != 0.0).unwrap_or(true),
             max_varbinds: if single_request { 1 } else { 32 },
         })
@@ -267,8 +313,13 @@ async fn resolve(ep: &Endpoint) -> Result<SocketAddr, SnmpError> {
         .collect();
     // MRTG uses the first address getaddrinfo returns, or the first IPv4
     // address for IPv4-only targets.
-    let pick = if ep.ipv4only { addrs.iter().find(|a| a.is_ipv4()) } else { addrs.first() };
-    pick.copied().ok_or_else(|| SnmpError::Resolve(ep.host.clone()))
+    let pick = if ep.ipv4only {
+        addrs.iter().find(|a| a.is_ipv4())
+    } else {
+        addrs.first()
+    };
+    pick.copied()
+        .ok_or_else(|| SnmpError::Resolve(ep.host.clone()))
 }
 
 /// One open session to one agent. Requests on a session are sequential.
@@ -302,21 +353,25 @@ const ERR_NO_SUCH_NAME: u32 = 2;
 fn place_values(take: &[usize], want: &[String], varbinds: &[(String, Val)], out: &mut [Val]) {
     for (k, &i) in take.iter().enumerate() {
         if let Some((oid, v)) = varbinds.get(k)
-            && *oid == want[i] {
-                out[i] = v.clone();
-            }
+            && *oid == want[i]
+        {
+            out[i] = v.clone();
+        }
     }
 }
 
 fn to_oid(s: &str) -> Result<Oid, SnmpError> {
     // Arcs are 32-bit on the wire (RFC 2578); one that does not fit is no OID, not a truncated one.
-    let parts: Option<Vec<u32>> = parse_numeric(s).and_then(|p| p.into_iter().map(|a| u32::try_from(a).ok()).collect());
+    let parts: Option<Vec<u32>> =
+        parse_numeric(s).and_then(|p| p.into_iter().map(|a| u32::try_from(a).ok()).collect());
     let parts = parts.ok_or_else(|| SnmpError::Protocol(format!("bad OID {s}")))?;
     Ok(Oid::from_slice(&parts))
 }
 
 fn varbinds(v: Vec<VarBind>) -> Vec<(String, Val)> {
-    v.into_iter().map(|b| (b.oid.to_string(), Val::from_value(&b.value))).collect()
+    v.into_iter()
+        .map(|b| (b.oid.to_string(), Val::from_value(&b.value)))
+        .collect()
 }
 
 impl Session {
@@ -326,7 +381,13 @@ impl Session {
         let auth: Auth = match ep.version {
             SnmpVersion::V1 => Auth::v1(ep.community.as_str()),
             SnmpVersion::V2c => Auth::v2c(ep.community.as_str()),
-            SnmpVersion::V3 => ep.v3.as_ref().ok_or_else(|| SnmpError::V3("missing USM parameters".into()))?.usm().map_err(SnmpError::V3)?.into(),
+            SnmpVersion::V3 => ep
+                .v3
+                .as_ref()
+                .ok_or_else(|| SnmpError::V3("missing USM parameters".into()))?
+                .usm()
+                .map_err(SnmpError::V3)?
+                .into(),
         };
         // One attempt per call: the retries, and MRTG's growing timeout, are this module's.
         let client = Client::builder(addr, auth)
@@ -337,7 +398,11 @@ impl Session {
             .connect()
             .await
             .map_err(|e| SnmpError::Protocol(format!("socket for {}: {e}", ep.display())))?;
-        Ok(Session { client, ep: ep.clone(), unsettled: false })
+        Ok(Session {
+            client,
+            ep: ep.clone(),
+            unsettled: false,
+        })
     }
 
     pub fn endpoint(&self) -> &Endpoint {
@@ -356,8 +421,14 @@ impl Session {
             // When v3 replies came but were refused, or authentication failed (the agent was
             // restarted with new keys, or a reply was forged), start over once: a new socket and a
             // fresh discovery. Plain timeouts (the device is down) do not retry here.
-            Err(e) if self.ep.version == SnmpVersion::V3 && (rejected || matches!(e, SnmpError::V3(_))) => {
-                tracing::debug!("SNMPv3 session for {} reopened after: {e}", self.ep.display());
+            Err(e)
+                if self.ep.version == SnmpVersion::V3
+                    && (rejected || matches!(e, SnmpError::V3(_))) =>
+            {
+                tracing::debug!(
+                    "SNMPv3 session for {} reopened after: {e}",
+                    self.ep.display()
+                );
                 self.reopen().await?;
                 self.unsettled = true;
                 self.exchange_once(req).await.0
@@ -391,7 +462,16 @@ impl Session {
             };
             let outcome = tokio::time::timeout(t, fut).await;
             match outcome {
-                Ok(Ok(varbinds)) => return (Ok(Resp { error_status: 0, error_index: 0, varbinds }), rejected),
+                Ok(Ok(varbinds)) => {
+                    return (
+                        Ok(Resp {
+                            error_status: 0,
+                            error_index: 0,
+                            varbinds,
+                        }),
+                        rejected,
+                    );
+                }
                 Ok(Err(e)) => match *e {
                     // The agent answered with an error-status: the callers decide (v1 noSuchName,
                     // tooBig, ...), as they did with the PDU's fields.
@@ -401,19 +481,34 @@ impl Session {
                             Ok(0) | Err(_) => 5,
                             Ok(s) => s,
                         };
-                        return (Ok(Resp { error_status: status, error_index: index, varbinds: Vec::new() }), rejected);
+                        return (
+                            Ok(Resp {
+                                error_status: status,
+                                error_index: index,
+                                varbinds: Vec::new(),
+                            }),
+                            rejected,
+                        );
                     }
                     async_snmp::Error::Auth { .. } | async_snmp::Error::Report { .. } => {
-                        return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), true);
+                        return (
+                            Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))),
+                            true,
+                        );
                     }
                     // A reply that could not be used (it did not decode, or it broke the rules):
                     // refused, not a silence.
-                    async_snmp::Error::Decode(..) | async_snmp::Error::MalformedResponse { .. } | async_snmp::Error::ResponseShape { .. } => {
+                    async_snmp::Error::Decode(..)
+                    | async_snmp::Error::MalformedResponse { .. }
+                    | async_snmp::Error::ResponseShape { .. } => {
                         rejected = true;
                     }
                     // Configuration the library refuses cannot get better by asking again.
                     async_snmp::Error::Config(_) | async_snmp::Error::Privacy(_) => {
-                        return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), false);
+                        return (
+                            Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))),
+                            false,
+                        );
                     }
                     _ => {}
                 },
@@ -435,7 +530,10 @@ impl Session {
         let parsed: Vec<Option<Oid>> = oids.iter().map(|o| to_oid(o).ok()).collect();
         let mut chunk = self.ep.max_varbinds.max(1);
         // The OID each answer must carry, as the library writes it.
-        let want: Vec<String> = parsed.iter().map(|o| o.as_ref().map(|o| o.to_string()).unwrap_or_default()).collect();
+        let want: Vec<String> = parsed
+            .iter()
+            .map(|o| o.as_ref().map(|o| o.to_string()).unwrap_or_default())
+            .collect();
         let mut pending: Vec<usize> = (0..oids.len()).filter(|&i| parsed[i].is_some()).collect();
         while !pending.is_empty() {
             let take: Vec<usize> = pending.iter().copied().take(chunk).collect();
@@ -448,7 +546,10 @@ impl Session {
                 }
                 ERR_NO_SUCH_NAME => {
                     // v1: one bad varbind fails the request. Mark it and resend the rest.
-                    let bad = (r.error_index as usize).checked_sub(1).filter(|&b| b < take.len()).unwrap_or(0);
+                    let bad = (r.error_index as usize)
+                        .checked_sub(1)
+                        .filter(|&b| b < take.len())
+                        .unwrap_or(0);
                     let idx = take[bad];
                     out[idx] = Val::Missing;
                     pending.retain(|&i| i != idx);
@@ -472,7 +573,10 @@ impl Session {
         if r.error_status != 0 {
             return Ok(None);
         }
-        Ok(r.varbinds.into_iter().next().filter(|(_, v)| *v != Val::EndOfMib))
+        Ok(r.varbinds
+            .into_iter()
+            .next()
+            .filter(|(_, v)| *v != Val::EndOfMib))
     }
 
     /// Walk the subtree under `base` and return `(suffix, value)` pairs,
@@ -482,13 +586,23 @@ impl Session {
     }
 
     /// Walk `base` for at most `max_rows` rows and stop there (the rest is not read).
-    pub async fn walk_first(&mut self, base: &str, max_rows: usize) -> Result<Vec<(String, Val)>, SnmpError> {
-        self.walk_rows(base, max_rows.min(MAX_WALK_ROWS), true).await
+    pub async fn walk_first(
+        &mut self,
+        base: &str,
+        max_rows: usize,
+    ) -> Result<Vec<(String, Val)>, SnmpError> {
+        self.walk_rows(base, max_rows.min(MAX_WALK_ROWS), true)
+            .await
     }
 
     /// A walk: at most `max_rows` rows and [`MAX_WALK_BYTES`] (counting each row's overhead), and
     /// 600 s. Past the rows, `stop_early` ends it with what it has; otherwise it is an error.
-    async fn walk_rows(&mut self, base: &str, max_rows: usize, stop_early: bool) -> Result<Vec<(String, Val)>, SnmpError> {
+    async fn walk_rows(
+        &mut self,
+        base: &str,
+        max_rows: usize,
+        stop_early: bool,
+    ) -> Result<Vec<(String, Val)>, SnmpError> {
         let base = base.trim_start_matches('.').to_string();
         let prefix = format!("{base}.");
         let mut out = Vec::new();
@@ -500,12 +614,22 @@ impl Session {
             if out.len() >= max_rows && stop_early {
                 break;
             }
-            if started.elapsed() > Duration::from_secs(600) || out.len() > max_rows || bytes > MAX_WALK_BYTES {
-                return Err(SnmpError::Protocol(format!("walk of {base} on {} did not terminate", self.ep.display())));
+            if started.elapsed() > Duration::from_secs(600)
+                || out.len() > max_rows
+                || bytes > MAX_WALK_BYTES
+            {
+                return Err(SnmpError::Protocol(format!(
+                    "walk of {base} on {} did not terminate",
+                    self.ep.display()
+                )));
             }
             let o = to_oid(&cur)?;
             let r = if bulk {
-                self.exchange(&Req::Bulk(std::slice::from_ref(&o), self.ep.max_repetitions)).await?
+                self.exchange(&Req::Bulk(
+                    std::slice::from_ref(&o),
+                    self.ep.max_repetitions,
+                ))
+                .await?
             } else {
                 self.exchange(&Req::GetNext(&o)).await?
             };
@@ -528,10 +652,12 @@ impl Session {
                     break;
                 }
                 cur = oid.clone();
-                bytes += WALK_ROW_OVERHEAD + oid.len() + match &v {
-                    Val::Str(b) | Val::Opaque(b) => b.len(),
-                    _ => 8,
-                };
+                bytes += WALK_ROW_OVERHEAD
+                    + oid.len()
+                    + match &v {
+                        Val::Str(b) | Val::Opaque(b) => b.len(),
+                        _ => 8,
+                    };
                 out.push((oid[prefix.len()..].to_string(), v));
             }
             if done {
@@ -581,7 +707,14 @@ impl SessionPool {
         if ep.version != SnmpVersion::V3 {
             return Ok(Arc::new(Mutex::new(Session::open(ep).await?)));
         }
-        if let Some(s) = self.v3.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(e, _)| e == ep).map(|(_, s)| s.clone()) {
+        if let Some(s) = self
+            .v3
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|(e, _)| e == ep)
+            .map(|(_, s)| s.clone())
+        {
             return Ok(s);
         }
         let s = Arc::new(Mutex::new(Session::open(ep).await?));
@@ -600,15 +733,24 @@ mod tests {
 
     #[test]
     fn get_values_are_matched_by_oid() {
-        let want = vec!["1.3.6.1.2.1.2.2.1.10.1".to_string(), "1.3.6.1.2.1.2.2.1.16.1".to_string()];
+        let want = vec![
+            "1.3.6.1.2.1.2.2.1.10.1".to_string(),
+            "1.3.6.1.2.1.2.2.1.16.1".to_string(),
+        ];
         let mut out = vec![Val::Missing, Val::Missing];
         // The right objects in order: both placed.
-        let ok = vec![(want[0].clone(), Val::Unsigned(5)), (want[1].clone(), Val::Unsigned(7))];
+        let ok = vec![
+            (want[0].clone(), Val::Unsigned(5)),
+            (want[1].clone(), Val::Unsigned(7)),
+        ];
         place_values(&[0, 1], &want, &ok, &mut out);
         assert_eq!(out, [Val::Unsigned(5), Val::Unsigned(7)]);
         // A reply for other objects (another interface, a stale answer): nothing placed.
         let mut out = vec![Val::Missing, Val::Missing];
-        let other = vec![("1.3.6.1.2.1.2.2.1.10.2".to_string(), Val::Unsigned(9)), (want[1].clone(), Val::Unsigned(7))];
+        let other = vec![
+            ("1.3.6.1.2.1.2.2.1.10.2".to_string(), Val::Unsigned(9)),
+            (want[1].clone(), Val::Unsigned(7)),
+        ];
         place_values(&[0, 1], &want, &other, &mut out);
         assert_eq!(out, [Val::Missing, Val::Unsigned(7)]);
     }
@@ -640,7 +782,11 @@ mod tests {
         let mut buf = [0u8; 1500];
         let (_, first) = sink.recv_from(&mut buf).await.unwrap();
         let (_, second) = sink.recv_from(&mut buf).await.unwrap();
-        assert_ne!(first.port(), second.port(), "the second request came from the same socket");
+        assert_ne!(
+            first.port(),
+            second.port(),
+            "the second request came from the same socket"
+        );
     }
 
     #[test]
@@ -655,8 +801,17 @@ mod tests {
         // What was asked for: no security, authentication, authentication and privacy.
         for ok in [
             &[("username", "u")][..],
-            &[("username", "u"), ("authpassword", "authpass1"), ("authprotocol", "sha256")],
-            &[("username", "u"), ("authpassword", "authpass1"), ("privpassword", "privpass1"), ("privprotocol", "aes")],
+            &[
+                ("username", "u"),
+                ("authpassword", "authpass1"),
+                ("authprotocol", "sha256"),
+            ],
+            &[
+                ("username", "u"),
+                ("authpassword", "authpass1"),
+                ("privpassword", "privpass1"),
+                ("privprotocol", "aes"),
+            ],
         ] {
             assert!(V3Params::from_options(&opts(ok)).is_ok(), "{ok:?}");
         }
@@ -665,9 +820,17 @@ mod tests {
             &[("username", "u"), ("privpassword", "privpass1")][..],
             &[("username", "u"), ("privprotocol", "aes")],
             &[("username", "u"), ("authprotocol", "sha")],
-            &[("username", "u"), ("authpassword", "authpass1"), ("privprotocol", "aes")],
+            &[
+                ("username", "u"),
+                ("authpassword", "authpass1"),
+                ("privprotocol", "aes"),
+            ],
             &[("username", "u"), ("authpassword", "")],
-            &[("username", "u"), ("authpassword", "authpass1"), ("privpassword", "")],
+            &[
+                ("username", "u"),
+                ("authpassword", "authpass1"),
+                ("privpassword", ""),
+            ],
         ] {
             assert!(V3Params::from_options(&opts(bad)).is_err(), "{bad:?}");
         }

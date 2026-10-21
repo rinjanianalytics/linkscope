@@ -15,19 +15,35 @@ use serde_json::{Value, json};
 const MRTG_LIB: &str = "/root/mrtg/src/lib/mrtg2/MRTG_lib.pm";
 
 fn perl_available() -> bool {
-    Path::new(MRTG_LIB).exists() && Command::new("perl").arg("-e1").status().is_ok_and(|s| s.success())
+    Path::new(MRTG_LIB).exists()
+        && Command::new("perl")
+            .arg("-e1")
+            .status()
+            .is_ok_and(|s| s.success())
 }
 
 fn perl_dump(cfg: &Path) -> Value {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/perl/dump.pl");
-    let out = Command::new("perl").arg(script).arg(cfg).arg("check").output().expect("run perl");
+    let out = Command::new("perl")
+        .arg(script)
+        .arg(cfg)
+        .arg("check")
+        .output()
+        .expect("run perl");
     serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
-        panic!("bad perl output for {}: {e}\n{}\n{}", cfg.display(), String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr))
+        panic!(
+            "bad perl output for {}: {e}\n{}\n{}",
+            cfg.display(),
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
     })
 }
 
 fn read_opts() -> ReadOptions {
-    ReadOptions { trust: TrustPolicy::Off }
+    ReadOptions {
+        trust: TrustPolicy::Off,
+    }
 }
 
 /// Compare one config file; returns a description of differences.
@@ -37,7 +53,10 @@ fn compare(cfg: &Path) -> Vec<String> {
     let rust = read_config(cfg, &read_opts());
     match (&perl.get("error"), &rust) {
         (Some(e), Ok(_)) => {
-            diffs.push(format!("perl readcfg failed ({}) but rust succeeded", e.as_str().unwrap_or("").trim()));
+            diffs.push(format!(
+                "perl readcfg failed ({}) but rust succeeded",
+                e.as_str().unwrap_or("").trim()
+            ));
             return diffs;
         }
         (None, Err(e)) => {
@@ -54,13 +73,22 @@ fn compare(cfg: &Path) -> Vec<String> {
         "per_target": serde_json::to_value(&raw.per_target).unwrap(),
     });
     if rraw != perl["raw"] {
-        diffs.push(format!("raw differs:\n perl: {}\n rust: {}", perl["raw"], rraw));
+        diffs.push(format!(
+            "raw differs:\n perl: {}\n rust: {}",
+            perl["raw"], rraw
+        ));
         return diffs;
     }
     let checked = check(raw, &CheckOptions { no_create: true });
-    let perl_err = perl.get("check_error").and_then(|v| v.as_str()).map(str::to_string);
+    let perl_err = perl
+        .get("check_error")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     match (&perl_err, &checked) {
-        (Some(e), Ok(_)) => diffs.push(format!("perl cfgcheck failed ({}) but rust succeeded", e.trim())),
+        (Some(e), Ok(_)) => diffs.push(format!(
+            "perl cfgcheck failed ({}) but rust succeeded",
+            e.trim()
+        )),
         (None, Err(e)) => diffs.push(format!("rust check failed ({e}) but perl succeeded")),
         _ => {}
     }
@@ -71,7 +99,11 @@ fn compare(cfg: &Path) -> Vec<String> {
     // Sources.
     let psrc = perl["sources"].as_array().cloned().unwrap_or_default();
     if psrc.len() != cfg.sources.len() {
-        diffs.push(format!("source count perl {} rust {}", psrc.len(), cfg.sources.len()));
+        diffs.push(format!(
+            "source count perl {} rust {}",
+            psrc.len(),
+            cfg.sources.len()
+        ));
         return diffs;
     }
     for (i, (p, r)) in psrc.iter().zip(&cfg.sources).enumerate() {
@@ -105,7 +137,10 @@ fn compare(cfg: &Path) -> Vec<String> {
     for t in &cfg.targets {
         let pe = perl["expr"][&t.name].as_str().unwrap_or("");
         if pe != t.rewritten {
-            diffs.push(format!("[{}] rewritten differs:\n perl: {pe:?}\n rust: {:?}", t.name, t.rewritten));
+            diffs.push(format!(
+                "[{}] rewritten differs:\n perl: {pe:?}\n rust: {:?}",
+                t.name, t.rewritten
+            ));
         }
         let pu = perl["unique"][&t.name].as_i64().unwrap_or(-99);
         let ru = t.unique_source.map(|u| u as i64).unwrap_or(-1);
@@ -238,8 +273,16 @@ fn includes_match_perl() {
     }
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("work")).unwrap();
-    write(dir.path(), "inc1.cfg", "Target[i1]: 1:c@h\nTitle[i1]: one\nMaxBytes[i1]: 5\n");
-    let p = write(dir.path(), "top.cfg", "WorkDir: @WORK@\nOptions[_]: bits\nInclude: inc1.cfg\nTarget[t]: 2:c@h\nTitle[t]: two\nMaxBytes[t]: 5\n");
+    write(
+        dir.path(),
+        "inc1.cfg",
+        "Target[i1]: 1:c@h\nTitle[i1]: one\nMaxBytes[i1]: 5\n",
+    );
+    let p = write(
+        dir.path(),
+        "top.cfg",
+        "WorkDir: @WORK@\nOptions[_]: bits\nInclude: inc1.cfg\nTarget[t]: 2:c@h\nTitle[t]: two\nMaxBytes[t]: 5\n",
+    );
     let d = compare(&p);
     assert!(d.is_empty(), "{}", d.join("\n"));
 }
@@ -248,7 +291,10 @@ fn includes_match_perl() {
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn pick<'a>(&mut self, xs: &[&'a str]) -> &'a str {
@@ -263,10 +309,39 @@ fn random_configs_match_perl() {
     }
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join("work")).unwrap();
-    let keys = ["Title", "PageTop", "YLegend", "ShortLegend", "Legend1", "LegendI", "Options", "MaxBytes", "Directory", "kMG"];
+    let keys = [
+        "Title",
+        "PageTop",
+        "YLegend",
+        "ShortLegend",
+        "Legend1",
+        "LegendI",
+        "Options",
+        "MaxBytes",
+        "Directory",
+        "kMG",
+    ];
     let targets = ["a", "b", "C", "d.e", "f-1", "_x"];
-    let values = ["foo", "bar baz", "1000", "growright", "bits, gauge", "<b>x</b>", "a~", "~b", "M"];
-    let tgt_exprs = ["1:pub@h", "2:pub@h:161", "#Gi0/1:p@h:::::2", "\\eth0:p@r", "3:p@h + 4:p@h", "ifInErrors.1&ifOutErrors.1:p@h", "-5:p@h"];
+    let values = [
+        "foo",
+        "bar baz",
+        "1000",
+        "growright",
+        "bits, gauge",
+        "<b>x</b>",
+        "a~",
+        "~b",
+        "M",
+    ];
+    let tgt_exprs = [
+        "1:pub@h",
+        "2:pub@h:161",
+        "#Gi0/1:p@h:::::2",
+        "\\eth0:p@r",
+        "3:p@h + 4:p@h",
+        "ifInErrors.1&ifOutErrors.1:p@h",
+        "-5:p@h",
+    ];
     let mut rng = Lcg(0x5eed);
     let mut failures = Vec::new();
     let cases = 1500;
@@ -284,7 +359,11 @@ fn random_configs_match_perl() {
                 2 => {
                     let k = rng.pick(&keys);
                     let w = rng.pick(&["_", "^", "$"]);
-                    let v = if rng.next().is_multiple_of(4) { "" } else { rng.pick(&values) };
+                    let v = if rng.next().is_multiple_of(4) {
+                        ""
+                    } else {
+                        rng.pick(&values)
+                    };
                     s.push_str(&format!("{k}[{w}]: {v}\n"));
                 }
                 3 => s.push_str(&format!("   {}\n", rng.pick(&values))),
@@ -324,9 +403,14 @@ fn contrib_configs_match_perl() {
     let re = regex::Regex::new(r"(?im)^(WorkDir|LogDir|HtmlDir|ImageDir|IconDir)\s*:.*$").unwrap();
     let mut failures = Vec::new();
     let mut n = 0;
-    for entry in glob::glob("/root/mrtg/src/contrib/**/*.cfg").unwrap().flatten() {
+    for entry in glob::glob("/root/mrtg/src/contrib/**/*.cfg")
+        .unwrap()
+        .flatten()
+    {
         let body = std::fs::read_to_string(&entry).unwrap_or_default();
-        let body = re.replace_all(&body, |c: &regex::Captures| format!("{}: {}", &c[1], work.display()));
+        let body = re.replace_all(&body, |c: &regex::Captures| {
+            format!("{}: {}", &c[1], work.display())
+        });
         let p = dir.path().join(format!("contrib{n}.cfg"));
         std::fs::write(&p, body.as_ref()).unwrap();
         n += 1;

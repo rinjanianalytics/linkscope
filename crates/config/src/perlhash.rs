@@ -107,7 +107,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
                         break;
                     }
                     Some('$') | Some('@') => {
-                        return Err("variable interpolation is not allowed; use single quotes".into());
+                        return Err(
+                            "variable interpolation is not allowed; use single quotes".into()
+                        );
                     }
                     Some(&ch) => {
                         s.push(ch);
@@ -119,12 +121,17 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
         } else if c == '-' || c == '+' || c == '.' || c.is_ascii_alphanumeric() || c == '_' {
             let start = i;
             i += 1;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || matches!(chars[i], '_' | '.')) {
+            while i < chars.len()
+                && (chars[i].is_ascii_alphanumeric() || matches!(chars[i], '_' | '.'))
+            {
                 i += 1;
             }
             let w: String = chars[start..i].iter().collect();
             let bare = w.trim_start_matches(['-', '+']);
-            let is_ident = bare.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            let is_ident = bare
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                 && bare.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             let is_num = bare.parse::<f64>().is_ok();
             if !is_ident && !is_num {
@@ -132,7 +139,9 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             }
             out.push(Tok::Word(w));
         } else {
-            return Err(format!("unexpected character '{c}' (only key => value pairs are allowed)"));
+            return Err(format!(
+                "unexpected character '{c}' (only key => value pairs are allowed)"
+            ));
         }
     }
     Ok(out)
