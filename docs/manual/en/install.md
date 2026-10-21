@@ -32,8 +32,9 @@ repository and your configuration.
    docker compose logs -f
    ```
 
-Compose pulls the published image, or builds it from the repository when there is none (the first
-build takes several minutes). To build your own: `docker compose build`.
+Compose pulls the published image (for amd64 and arm64 servers), or builds it from the repository
+when there is none (the first build takes several minutes). To build your own:
+`docker compose build`.
 
 ### What the container keeps where
 

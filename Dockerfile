@@ -4,27 +4,53 @@
 # The web UI is prebuilt (crates/web/ui/dist) and embedded in the binary, so the build needs Rust
 # only. The image holds the binary, CA certificates (for webhooks and mail over TLS) and nothing
 # else, and runs as an unprivileged account.
+#
+# One Dockerfile for amd64 and arm64. Rust always runs on the build machine's own architecture and
+# cross-compiles when the target differs; the final stage only copies files, so an image for the
+# other architecture needs no emulation:
+#   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:0.1.0 .
 
-FROM rust:1.92.0-slim-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.92.0-slim-bookworm AS build
+ARG TARGETARCH
+ARG BUILDARCH
 # Jobs for cargo; lower it on a small build host (docker build --build-arg CARGO_BUILD_JOBS=2).
 ARG CARGO_BUILD_JOBS=4
-ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+    CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+# The Rust target, and for another architecture its C compiler (ring has C) and the target.
+RUN set -eu; \
+    target_arch="${TARGETARCH:-$(dpkg --print-architecture)}"; build_arch="${BUILDARCH:-$(dpkg --print-architecture)}"; \
+    case "$target_arch" in \
+      amd64) triple=x86_64-unknown-linux-gnu; cross="gcc-x86-64-linux-gnu libc6-dev-amd64-cross" ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; cross="gcc-aarch64-linux-gnu libc6-dev-arm64-cross" ;; \
+      *) echo "no build for $target_arch" >&2; exit 1 ;; \
+    esac; \
+    echo "$triple" > /target-triple; \
+    if [ "$target_arch" != "$build_arch" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends $cross && rm -rf /var/lib/apt/lists/*; \
+      rustup target add "$triple"; \
+    fi
 WORKDIR /src
 COPY . .
-RUN cargo build --release --locked -p linkscope \
-    && install -m 0755 target/release/linkscope /usr/local/bin/linkscope
+# The image's files, laid out under /out: the binary (and cfgmaker by name), the CA bundle, the
+# account and the directories with their owners.
+RUN set -eu; triple="$(cat /target-triple)"; \
+    cargo build --release --locked -p linkscope --target "$triple"; \
+    install -d /out/usr/local/bin /out/etc/ssl/certs /out/etc/linkscope /out/var/lib/linkscope; \
+    install -m 0755 "target/$triple/release/linkscope" /out/usr/local/bin/linkscope; \
+    ln -s linkscope /out/usr/local/bin/cfgmaker; \
+    cp /etc/ssl/certs/ca-certificates.crt /out/etc/ssl/certs/ca-certificates.crt; \
+    cp /etc/passwd /out/etc/passwd; cp /etc/group /out/etc/group; \
+    echo 'linkscope:x:10001:10001:LinkScope:/var/lib/linkscope:/usr/sbin/nologin' >> /out/etc/passwd; \
+    echo 'linkscope:x:10001:' >> /out/etc/group; \
+    chown root:root /out/etc/linkscope && chmod 0755 /out/etc/linkscope; \
+    chown 10001:10001 /out/var/lib/linkscope && chmod 0750 /out/var/lib/linkscope
 
 FROM debian:bookworm-slim
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 linkscope \
-    && useradd --system --uid 10001 --gid 10001 --home-dir /var/lib/linkscope --shell /usr/sbin/nologin linkscope \
-    && install -d -m 0755 -o root -g root /etc/linkscope \
-    && install -d -m 0750 -o linkscope -g linkscope /var/lib/linkscope
-COPY --from=build /usr/local/bin/linkscope /usr/local/bin/linkscope
-# cfgmaker by its own name too: `docker compose run --rm linkscope cfgmaker ...` works either way.
-RUN ln -s /usr/local/bin/linkscope /usr/local/bin/cfgmaker
+COPY --from=build /out/ /
 
 USER linkscope:linkscope
 WORKDIR /var/lib/linkscope
