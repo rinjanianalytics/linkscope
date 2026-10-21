@@ -301,7 +301,7 @@ then push a tag `v<version>`. `.github/workflows/release.yml` runs CI, checks th
 version and the changelog agree, pushes the image for linux/amd64 and linux/arm64 (and `latest`,
 except for a pre-release such as `0.3.0-rc.1`), and last creates the GitHub release from the
 changelog. `.github/workflows/ci.yml` checks every pull request and every push to main: clippy and
-the tests on Rust 1.92.0 (the image's), and a build on 1.88 (`rust-version`). A pull request that
+the tests on Rust 1.92.0 (the image's), and a build on 1.89 (`rust-version`). A pull request that
 changes the Dockerfile, and a manual run of Release, builds both images without pushing.
 
 - [ ] The first release through the pipeline. Its first push to GHCR proves the repository's
