@@ -148,14 +148,21 @@ bound) or `removed` (its threshold left the configuration). `polls` counts the b
 in a row, up to the one that fired it or cleared it. Rates are per second, bytes for interface
 counters. Each request carries `X-LinkScope-Timestamp` (Unix time) and
 `X-LinkScope-Signature: sha256=<hex>`, the HMAC-SHA256 of the timestamp, a full stop and the
-body, keyed with `AlertWebhookSecret`. To check it:
+body, keyed with `AlertWebhookSecret`, and `X-LinkScope-Delivery`, the notice's id, the same on
+each retry (delivery is at least once: drop an id you have seen). To check it:
 
 ```python
 import hashlib, hmac, time
 
 def verify(secret: bytes, timestamp: str, body: bytes, signature: str) -> bool:
-    want = "sha256=" + hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, signature) and abs(time.time() - int(timestamp)) < 300
+    """True for a signed, recent request; False for anything else, malformed headers included."""
+    try:
+        sent = int(timestamp)
+        want = hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        ok = hmac.compare_digest(("sha256=" + want).encode(), signature.encode())
+    except (TypeError, ValueError, AttributeError, UnicodeError):
+        return False
+    return ok and abs(time.time() - sent) < 300
 ```
 
 The webhook URL, its secret and the mail password never appear in the UI, the API or

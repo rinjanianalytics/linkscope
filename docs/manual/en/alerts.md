@@ -28,11 +28,27 @@ A bound is a rate in bytes per second, or a percentage of `MaxBytes` when it end
 A threshold program runs directly, without a shell, with the target's `SetEnv[]` and
 `THRESH_DESC` in its environment. Its arguments are MRTG's: the target name, the bound as
 configured, the current value, and, when broken, the description (`No Description` when none).
-A program that runs longer than 60 seconds is stopped.
+A program that runs longer than 60 seconds is stopped, together with everything it started (it
+runs in a process group of its own).
+
+The program is the file the configuration check found: a relative path is taken from the
+directory LinkScope was started in, and run as that file. MRTG checked the path but ran a bare
+name through `PATH`, which could run another program than the one checked. The file must be
+executable.
+
+A configured secret (an SNMP community, a password, the webhook URL) that a `Title[]`,
+`ThreshDesc[]` or `PageTop[]` quotes is replaced with `•••` in the mail, in the program's arguments
+and in `THRESH_DESC`, as in the webhook body. Other text, e-mail addresses included, is as MRTG
+writes it.
 
 Without `ThreshDir`, MRTG runs the program and sends the mail on every broken poll. With
 `ThreshDir`, a state file per bound (`<target>.threshmaxI` and so on) records that it is broken,
 so they run once when it breaks and once when it recovers. LinkScope keeps both behaviors.
+
+A state file that cannot be used (`ThreshDir` gone or not writable, or something else in its place:
+a directory, a link, a file of another account) is an error in the log. LinkScope then remembers
+the change in memory, so the program and the mail still run once per change rather than on every
+poll.
 
 ## What LinkScope adds
 
@@ -72,7 +88,8 @@ neither fires nor clears an alert.
 ### Mail with a login
 
 Without `AlertMailUser`, mail goes as MRTG sends it: plain SMTP, to port 25 unless
-`ThreshMailServer` names a port.
+`ThreshMailServer` names a port. To a server other than this host, LinkScope warns at startup
+that the mail travels without TLS.
 
 With `AlertMailUser` and `AlertMailPassword`, LinkScope connects to port 587 unless
 `ThreshMailServer` names one, requires STARTTLS, checks the server's certificate, and logs in. If
@@ -98,6 +115,7 @@ Each request has these headers:
 | `Content-Type` | `application/json` |
 | `User-Agent` | `LinkScope/<version>` |
 | `X-LinkScope-Event` | `threshold` |
+| `X-LinkScope-Delivery` | This notice's id, the same on every attempt |
 | `X-LinkScope-Timestamp` | Unix time of this attempt |
 | `X-LinkScope-Signature` | `sha256=` and the hex HMAC-SHA256 of the timestamp, a full stop and the body |
 
@@ -138,8 +156,16 @@ The body:
 
 LinkScope waits up to 10 seconds for an answer (5 seconds to connect). It tries three times (now,
 after 2 seconds, after 10 seconds) on a network error, a 5xx or a 429. Any other answer is final.
-It never follows a redirect, so the signed body cannot go somewhere you did not configure. A
-failure is logged without the URL.
+It never follows a redirect, so the signed body cannot go somewhere you did not configure, and it
+ignores proxy settings in its environment (`HTTP_PROXY`, `ALL_PROXY`). A failure is logged without
+the URL.
+
+Delivery is at least once: an attempt that timed out may still have arrived, and the next one is
+then a second copy. Every attempt of one notice carries the same `X-LinkScope-Delivery`, so a
+receiver drops a delivery id it has already seen.
+
+An `http://` URL to another host is allowed, but LinkScope warns at startup: the body, and any
+token in the URL, travel unencrypted. Use `https://`.
 
 ### Check the signature
 
@@ -151,8 +177,14 @@ replays:
 import hashlib, hmac, time
 
 def verify(secret: bytes, timestamp: str, body: bytes, signature: str) -> bool:
-    want = "sha256=" + hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(want, signature) and abs(time.time() - int(timestamp)) < 300
+    """True for a signed, recent request; False for anything else, malformed headers included."""
+    try:
+        sent = int(timestamp)
+        want = hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+        ok = hmac.compare_digest(("sha256=" + want).encode(), signature.encode())
+    except (TypeError, ValueError, AttributeError, UnicodeError):
+        return False
+    return ok and abs(time.time() - sent) < 300
 ```
 
 The webhook URL, its secret and the mail password never appear in the UI, the API, `/metrics` or

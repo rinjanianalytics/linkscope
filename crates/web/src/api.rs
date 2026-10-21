@@ -167,7 +167,14 @@ impl View {
     /// Remove every configured credential and external command line from a
     /// string that is about to leave the process.
     pub fn redact(&self, text: &str) -> String {
-        let mut out = mask_communities(text);
+        self.redact_secrets(&mask_communities(text))
+    }
+
+    /// Only the configured credentials and command lines, nothing shaped like them: for text
+    /// whose form must stay as MRTG writes it (threshold mail, program arguments), where an
+    /// address such as `noc@example.com` is not a community.
+    pub fn redact_secrets(&self, text: &str) -> String {
+        let mut out = text.to_string();
         for s in &self.secrets {
             if out.contains(s.as_str()) {
                 out = out.replace(s.as_str(), "•••");

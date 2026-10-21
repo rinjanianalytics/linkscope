@@ -68,3 +68,11 @@ alerts), with `cargo audit` and `npm audit`. Fixed:
 | An EXEC target's background processes outlived it, one more each cycle | the command | its process group is ended when it finishes |
 | `PathAdd` with `PATH` unset put the current directory on the search path | the environment | `PathAdd` alone |
 | cfgmaker's header showed keys and communities | readers of the generated file | masked |
+| Threshold mail and program arguments carried secrets a title or description quoted (the webhook body did not) | whoever reads the mail | configured secrets replaced with `•••` |
+| Plain SMTP and `http://` webhooks to another host passed silently | an eavesdropper | a warning at startup and on reload |
+| Webhook retries could not be told apart from new notices | a flaky receiver | `X-LinkScope-Delivery`, constant across a notice's attempts |
+| Proxy variables in the environment applied to the webhook client | whoever sets the service's environment | no proxy |
+| A `ThreshProg*[]` bare name was checked in the working directory but run from `PATH` | the config | the checked file is run, by its absolute path; it must be executable |
+| A timed-out threshold program's children survived | the program | its own process group, killed as a group |
+| An unusable `ThreshDir` state file fired on every poll, or a planted one suppressed an alert | a `ThreshDir` writer | an error in the log; the change is remembered in memory, once per change |
+| A reload waited up to ten minutes for threshold actions, deaf to signals | a slow receiver | the new engine adopts them; on stop, ten seconds, or a second signal |

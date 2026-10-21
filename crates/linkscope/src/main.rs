@@ -182,7 +182,7 @@ fn run(mut args: Args) -> Result<ExitCode> {
         daemon::drop_privileges(u, g)?;
     }
     init_logging(args.logging.as_deref(), args.debug.is_some())?;
-    for w in &cfg.warnings {
+    for w in cfg.warnings.iter().cloned().chain(linkscope::thresh::cleartext_warnings(&cfg)) {
         tracing::warn!("{w}");
     }
     linkscope_config::create_dirs(&cfg)?;
@@ -201,6 +201,9 @@ fn run(mut args: Args) -> Result<ExitCode> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     rt.block_on(async_main(args, cfg, daemon_mode, listener))
 }
+
+/// How long threshold actions in flight may take once the daemon is told to stop.
+const STOP_GRACE: Duration = Duration::from_secs(10);
 
 async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option<std::net::TcpListener>) -> Result<ExitCode> {
     let mut oids = OidResolver::default();
@@ -238,7 +241,17 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
             _ = term.recv() => return Ok(ExitCode::from(1)),
             _ = int.recv() => return Ok(ExitCode::from(1)),
         };
-        engine.finish().await;
+        // Like MRTG from cron: the threshold actions finish before it exits, unless it is told to stop.
+        let stop = async {
+            tokio::select! {
+                _ = term.recv() => {}
+                _ = int.recv() => {}
+            }
+        };
+        let cut = engine.finish_or(stop).await;
+        if cut > 0 {
+            tracing::warn!("stopped with {cut} batches of threshold actions unfinished");
+        }
         tracing::info!("polled {} targets in {} ms ({} ok, {} failed)", info.targets, info.duration_ms, info.ok, info.failed);
         return Ok(match (info.ok, info.failed) {
             (_, 0) => ExitCode::SUCCESS,
@@ -282,13 +295,15 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
                 }) {
                     Ok(new) => {
                         tracing::info!("configuration reloaded: {} targets", new.targets.len());
-                        for w in &new.warnings {
+                        for w in new.warnings.iter().cloned().chain(linkscope::thresh::cleartext_warnings(&new)) {
                             tracing::warn!("{w}");
                         }
                         cfg = Arc::new(new);
                         stamps = mtimes(&cfg);
-                        engine.finish().await;
-                        engine = Engine::new(cfg.clone(), oids.clone(), state.clone(), cache_path.clone(), opts.clone());
+                        // The new engine takes over the threshold actions in flight: a reload
+                        // neither waits for a slow mail server nor drops what it was sending.
+                        let old = std::mem::replace(&mut engine, Engine::new(cfg.clone(), oids.clone(), state.clone(), cache_path.clone(), opts.clone()));
+                        engine.adopt(old);
                     }
                     Err(e) => {
                         tracing::error!("keeping the previous configuration; reload failed: {e:#}");
@@ -302,5 +317,18 @@ async fn async_main(args: Args, cfg: Config, daemon_mode: bool, listener: Option
         }
     }
     tracing::info!("LinkScope stopping");
+    // Notices in flight get a few seconds; another signal, or the grace running out, ends them.
+    let stop = async {
+        tokio::select! {
+            _ = tokio::time::sleep(STOP_GRACE) => {}
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+            _ = hup.recv() => {}
+        }
+    };
+    let cut = engine.finish_or(stop).await;
+    if cut > 0 {
+        tracing::warn!("stopped with {cut} batches of threshold actions unfinished; their notices were not sent");
+    }
     Ok(ExitCode::SUCCESS)
 }

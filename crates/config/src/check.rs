@@ -197,6 +197,17 @@ impl Thresholds {
     }
 }
 
+/// A `ThreshProg*[]` as it is run: the file the check found. MRTG checks the value as a path
+/// (relative to the working directory) but runs it through `PATH`, so a bare name could check one
+/// file and run another; LinkScope runs exactly the file it checked, made absolute here.
+pub fn program_path(v: String) -> String {
+    let p = Path::new(&v);
+    if p.is_absolute() {
+        return v;
+    }
+    std::env::current_dir().map(|d| d.join(p).to_string_lossy().into_owned()).unwrap_or(v)
+}
+
 /// One graphed target (`Target[name]` and its companion keywords).
 #[derive(Debug, Clone, Serialize)]
 pub struct Target {
@@ -670,10 +681,10 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
             max_i: get("threshmaxi"),
             max_o: get("threshmaxo"),
             desc: get("threshdesc"),
-            prog_i: get("threshprogi"),
-            prog_o: get("threshprogo"),
-            prog_ok_i: get("threshprogoki"),
-            prog_ok_o: get("threshprogoko"),
+            prog_i: get("threshprogi").map(program_path),
+            prog_o: get("threshprogo").map(program_path),
+            prog_ok_i: get("threshprogoki").map(program_path),
+            prog_ok_o: get("threshprogoko").map(program_path),
             mail_address: get("threshmailaddress"),
             for_polls: get("threshfor").map(|v| perl_int(&v).clamp(1, u32::MAX as i64) as u32),
         };
@@ -790,7 +801,17 @@ pub fn target_keywords(raw: &RawConfig, name: &str) -> IndexMap<String, String> 
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_directory;
+    use super::{normalize_directory, program_path};
+
+    #[test]
+    fn a_threshold_program_is_run_as_the_file_that_was_checked() {
+        assert_eq!(program_path("/usr/local/bin/notify".into()), "/usr/local/bin/notify");
+        let rel = program_path("bin/notify".into());
+        assert!(rel.starts_with('/') && rel.ends_with("/bin/notify"), "{rel}");
+        assert_eq!(rel, std::env::current_dir().unwrap().join("bin/notify").to_string_lossy());
+        // A bare name is the file in the working directory, as checked, not one found on PATH.
+        assert!(program_path("notify".into()).ends_with("/notify"));
+    }
 
     #[test]
     fn directory_stays_inside_workdir() {
