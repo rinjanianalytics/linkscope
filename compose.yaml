@@ -1,0 +1,52 @@
+# LinkScope with Docker Compose. See the manual's "Install and run" page (docs/manual/en/install.md).
+#
+# Docker's own settings (where the UI is published, the config file, the image) may go in a .env
+# file beside this one; .env.example lists them, and every one has a default, so .env is optional.
+# The SNMP settings themselves stay in mrtg.cfg, as with MRTG.
+#
+#   1. Put your configuration beside this file as mrtg.cfg, with `WorkDir: /var/lib/linkscope`
+#      (an existing MRTG config: change only that line). Make it readable by the container and
+#      no one else:  sudo chown root:10001 mrtg.cfg && sudo chmod 640 mrtg.cfg
+#   2. docker compose up -d
+#   3. Open http://127.0.0.1:8080/
+#
+# No configuration yet? Generate one with cfgmaker (it prints to standard output):
+#   docker compose run --rm -T linkscope cfgmaker --global 'WorkDir: /var/lib/linkscope' \
+#       --ifref=name public@192.0.2.1:::::2 > mrtg.cfg
+
+services:
+  linkscope:
+    image: ${LINKSCOPE_IMAGE:-ghcr.io/rinjanianalytics/linkscope:0.1.0}
+    # Without a published image (or to build your own): docker compose build
+    build:
+      context: .
+      args:
+        CARGO_BUILD_JOBS: ${CARGO_BUILD_JOBS:-4}
+    container_name: linkscope
+    restart: unless-stopped
+    # A small init as PID 1 reaps the processes EXEC targets and threshold programs leave.
+    init: true
+    volumes:
+      - ${LINKSCOPE_CONFIG:-./mrtg.cfg}:/etc/linkscope/mrtg.cfg:ro
+      - linkscope-data:/var/lib/linkscope
+    ports:
+      # The UI, the JSON API and /metrics, on the host's loopback only: the UI has no login.
+      # To reach it from your management network, set LINKSCOPE_LISTEN (for example
+      # 192.0.2.10:8080) and list the name you open it by in WebHosts:.
+      - "${LINKSCOPE_LISTEN:-127.0.0.1:8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  # Logs, the interface cache, the alert state. Back it up like MRTG's work directory.
+  linkscope-data:

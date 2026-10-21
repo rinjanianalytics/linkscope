@@ -31,6 +31,22 @@ Setelah setiap siklus, daemon mencatat satu baris:
 cycle: 120 targets in 1830 ms (2 failed, 0 log write failures)
 ```
 
+## Kontainer tidak dapat membaca konfigurasinya
+
+`cannot read /etc/linkscope/mrtg.cfg: Permission denied` di `docker compose logs` berarti akun
+kontainer (uid 10001) tidak dapat membaca berkas yang Anda pasang. Serahkan berkas itu ke root,
+dapat dibaca oleh grup kontainer:
+
+```sh
+sudo chown root:10001 mrtg.cfg
+sudo chmod 640 mrtg.cfg
+docker compose restart
+```
+
+Berkas milik akun Anda sendiri ditolak meskipun dapat dibaca, karena LinkScope hanya memuat
+konfigurasi milik root atau akunnya sendiri (lihat
+[Menjalankan dengan Docker](install.md#menjalankan-dengan-docker)).
+
 ## Konfigurasi ditolak karena izinnya
 
 LinkScope menolak berkas konfigurasi, atau berkas yang di-include-nya, yang
