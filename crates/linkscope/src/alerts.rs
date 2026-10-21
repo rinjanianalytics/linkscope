@@ -115,12 +115,17 @@ impl Book {
     /// Read the book; a missing file is an empty book, an unreadable one is
     /// reported and started afresh.
     pub fn load(path: &Path) -> Book {
-        match std::fs::read_to_string(path) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!("{}: {e}; starting with no alerts", path.display());
-                Book::default()
-            }),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Book::default(),
+        match crate::fsutil::read_state(path, crate::fsutil::MAX_STATE_BYTES) {
+            Ok(Some((s, open))) => {
+                let mut book: Book = serde_json::from_slice(&s).unwrap_or_else(|e| {
+                    tracing::warn!("{}: {e}; starting with no alerts", path.display());
+                    Book::default()
+                });
+                // Written again, owner only, at the next save.
+                book.dirty |= open;
+                book
+            }
+            Ok(None) => Book::default(),
             Err(e) => {
                 tracing::warn!("reading {}: {e}; starting with no alerts", path.display());
                 Book::default()
@@ -134,7 +139,7 @@ impl Book {
             return Ok(());
         }
         let data = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
-        crate::fsutil::write_atomic(path, &data, 0o644)?;
+        crate::fsutil::write_atomic(path, &data, crate::fsutil::STATE_MODE)?;
         self.dirty = false;
         Ok(())
     }

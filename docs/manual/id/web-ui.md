@@ -41,6 +41,9 @@ setiap target, laju trafiknya, dan grafiknya. Dengarkan di `127.0.0.1` atau di j
 manajemen, atau pasang reverse proxy dengan autentikasi di depannya. Jangan pernah membukanya ke
 internet.
 
+Antarmuka menjawab alamat IP dan `localhost`. Untuk membukanya dengan sebuah nama, melalui reverse
+proxy atau DNS, cantumkan nama itu di `WebHosts:` (lihat [Konfigurasi](configuration.md)).
+
 Antarmuka ini tidak pernah menampilkan rahasia. Community SNMP di `Target[]` ditampilkan sebagai
 `•••`, dan kata sandi SNMPv3, baris perintah eksternal, URL webhook, serta kata sandi email tidak
 pernah keluar dari proses. Lihat [Keamanan](security.md).

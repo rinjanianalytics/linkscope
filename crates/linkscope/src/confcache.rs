@@ -53,10 +53,21 @@ pub struct ConfCache {
 }
 
 impl ConfCache {
-    /// Read an `.ok` file; a missing or unreadable file gives an empty cache.
+    /// Read an `.ok` file; a missing or unreadable file gives an empty cache. A file others can
+    /// read is written again, owner only, at the next save.
     pub fn load(path: &Path) -> ConfCache {
         let mut c = ConfCache::default();
-        let Ok(text) = std::fs::read(path) else { return c };
+        let text = match crate::fsutil::read_state(path, crate::fsutil::MAX_STATE_BYTES) {
+            Ok(Some((text, open))) => {
+                c.dirty = open;
+                text
+            }
+            Ok(None) => return c,
+            Err(e) => {
+                tracing::warn!("reading {}: {e}; starting with an empty cache", path.display());
+                return c;
+            }
+        };
         for line in String::from_utf8_lossy(&text).lines() {
             if !line.contains('\t') {
                 continue;
@@ -92,7 +103,7 @@ impl ConfCache {
                 }
             }
         }
-        crate::fsutil::write_atomic(path, out.as_bytes(), 0o644)?;
+        crate::fsutil::write_atomic(path, out.as_bytes(), crate::fsutil::STATE_MODE)?;
         self.dirty = false;
         Ok(())
     }

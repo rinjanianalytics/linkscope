@@ -287,6 +287,10 @@ impl P {
 impl Filter {
     pub fn compile(src: &str) -> Result<Filter, String> {
         let t = lex(src)?;
+        // Depth counts parentheses and `not`; a chain (`a && a && ...`) is bounded by length.
+        if t.len() > 1000 {
+            return Err("--if-filter is longer than 1000 parts".into());
+        }
         let mut p = P { t, i: 0, depth: 0 };
         let root = p.or()?;
         if p.i != p.t.len() {

@@ -39,6 +39,9 @@ The UI has no login. Anyone who can reach the port sees every target, its rates 
 Listen on `127.0.0.1` or on a management network, or put a reverse proxy with authentication in
 front of it. Never expose it to the internet.
 
+It answers to IP addresses and `localhost`. To open it by a name, through a reverse proxy or DNS,
+list the name in `WebHosts:` (see [Configuration](configuration.md)).
+
 The UI never shows a secret. SNMP communities in a `Target[]` show as `•••`, and SNMPv3
 passwords, external command lines, the webhook URL and the mail password never leave the process.
 See [Security](security.md).
