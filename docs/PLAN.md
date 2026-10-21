@@ -268,6 +268,11 @@ published.
       and on `/metrics`); a foreign Host gets 421, the manual is served, the root filesystem is
       read-only, the account is uid 10001, `.ok` is 0600; `docker compose down` takes 0.5 s, and
       after `up` again the volume keeps the logs and the polling goes on.
+      arm64 (AK, 2026-10-21): the Dockerfile cross-compiles (Rust on the build machine's
+      architecture, `gcc-aarch64-linux-gnu` for ring's C), and the final stage only copies files,
+      so `docker buildx build --platform linux/amd64,linux/arm64` needs no emulation. The arm64
+      binary is aarch64, needs only libc, libm and libgcc_s and glibc 2.34 (bookworm has 2.36); it
+      could not be run on this amd64 host. A plain `docker build` on amd64 stays native.
 
 ## Open decisions
 
@@ -275,7 +280,8 @@ published.
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
 - When this repository goes public (it is private now), and with it whether the manual also
   gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
-- Publishing the image (`ghcr.io/rinjanianalytics/linkscope`, public, for amd64 and arm64?):
-  until then, compose builds it on the user's host.
+- Making the image public (`ghcr.io/rinjanianalytics/linkscope`, published for amd64 and arm64,
+  private until now): together with the repository, since a GPL binary in public needs its source
+  in public. Package settings, Change visibility.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
