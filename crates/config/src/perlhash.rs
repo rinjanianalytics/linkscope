@@ -41,7 +41,7 @@ pub fn parse(src: &str) -> Result<SnmpOptions, String> {
             }
         }
     }
-    if items.len() % 2 != 0 {
+    if !items.len().is_multiple_of(2) {
         return Err("odd number of elements in option list".into());
     }
     let mut out = SnmpOptions::new();

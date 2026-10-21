@@ -244,8 +244,8 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
         }
 
         // Continuation line.
-        if first.is_some() {
-            if let Some(c) = pat.continuation.captures(&line) {
+        if first.is_some()
+            && let Some(c) = pat.continuation.captures(&line) {
                 let text = c[1].to_string();
                 let f = first.as_deref().unwrap();
                 match second.as_deref() {
@@ -260,7 +260,6 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
                 }
                 continue;
             }
-        }
 
         finish_key(&mut raw, &first, &second, &post, &deflt, &mut defaulted, &file, line_no)?;
 
@@ -345,9 +344,9 @@ fn finish_key(
     line: usize,
 ) -> Result<(), ConfigError> {
     let Some(f) = first.as_deref() else { return Ok(()) };
-    if let Some(t) = second.as_deref() {
-        if !matches!(t, "^" | "$" | "_") {
-            if let Some(p) = post.get(f) {
+    if let Some(t) = second.as_deref()
+        && !matches!(t, "^" | "$" | "_")
+            && let Some(p) = post.get(f) {
                 let id = (f.to_string(), t.to_string());
                 if defaulted.remove(&id) {
                     raw.set(f, t, p.clone());
@@ -357,8 +356,6 @@ fn finish_key(
                     raw.append(f, t, &s);
                 }
             }
-        }
-    }
     match second.as_deref() {
         Some("_") => {
             if let Some(v) = deflt.get(f) {
@@ -381,14 +378,13 @@ fn finish_key(
 /// MRTG's NoSpaceChar handling. For prefixes (`is_prefix`) the default is to
 /// append a space; for suffixes the default is to prepend one.
 fn apply_nospace(v: &str, nospacechar: Option<&str>, is_prefix: bool) -> String {
-    if let Some(n) = nospacechar.filter(|n| !n.is_empty()) {
-        if let Some(stripped) = v.strip_suffix(n) {
+    if let Some(n) = nospacechar.filter(|n| !n.is_empty())
+        && let Some(stripped) = v.strip_suffix(n) {
             // MRTG uses `m/(.*)\Q$nsc\E$/` and `.` does not match a newline,
             // so for a multi-line prefix/suffix only the last line survives.
             let last = stripped.rsplit('\n').next().unwrap_or(stripped);
             return last.to_string();
         }
-    }
     if is_prefix { format!("{v} ") } else { format!(" {v}") }
 }
 

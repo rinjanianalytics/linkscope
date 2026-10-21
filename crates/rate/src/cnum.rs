@@ -186,11 +186,10 @@ fn hex_float(s: &[u8]) -> f64 {
         }
         p += 1;
     }
-    if p < s.len() && (s[p] == b'p' || s[p] == b'P') {
-        if let ScanInt::Ok(e, _) = scan_int_nows(&s[p + 1..]) {
+    if p < s.len() && (s[p] == b'p' || s[p] == b'P')
+        && let ScanInt::Ok(e, _) = scan_int_nows(&s[p + 1..]) {
             exp = exp.saturating_add(e);
         }
-    }
     if sticky {
         mant |= 1;
     }

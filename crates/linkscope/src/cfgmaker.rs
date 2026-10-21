@@ -128,12 +128,11 @@ fn mask_secrets(args: &[String]) -> String {
                 (true, true) => out.push(format!("{}=XXXXX", a.split_once('=').map_or(a.as_str(), |(k, _)| k))),
                 _ => out.push(a.clone()),
             }
-            if !inline && !flag_only(&key) {
-                if let Some(v) = args.get(i + 1) {
+            if !inline && !flag_only(&key)
+                && let Some(v) = args.get(i + 1) {
                     out.push(if hide { "XXXXX".to_string() } else { v.clone() });
                     i += 1;
                 }
-            }
         } else if let Some((_, router)) = a.rsplit_once('@') {
             out.push(format!("XXXXX@{router}"));
         } else {
@@ -244,11 +243,10 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                     None => (rest, String::new()),
                 }
             };
-            if snmpopt.is_empty() {
-                if let Some(o) = &opts.snmp_options {
+            if snmpopt.is_empty()
+                && let Some(o) = &opts.snmp_options {
                     snmpopt = if o.starts_with(':') { o.clone() } else { format!(":{o}") };
                 }
-            }
             if name.is_empty() {
                 return Err(format!("no router name in '{a}'"));
             }
@@ -494,11 +492,10 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
             }
         }
         for k in order {
-            if let Some(Some(idx)) = seen.get(&k) {
-                if let Some(i) = ifs.get_mut(idx) {
+            if let Some(Some(idx)) = seen.get(&k)
+                && let Some(i) = ifs.get_mut(idx) {
                     set(i, k);
                 }
-            }
         }
     };
     let text_key = |suffix: &str, v: &Val| -> Option<(String, u64)> {
@@ -703,11 +700,10 @@ fn gen_router(conf: &mut String, r: &RouterSpec, snmpopt: &str, dev: &DevInfo, i
         }
         let default = default_ifstate && default_iftype;
         let mut speed = i.speed.unwrap_or(0);
-        if speed == 0 {
-            if let Some(z) = r.opts.zero_speed {
+        if speed == 0
+            && let Some(z) = r.opts.zero_speed {
                 speed = z;
             }
-        }
         if speed == 0 {
             speed = match (dev.vendor.as_str(), i.if_type) {
                 ("foundry", 194) => 155_000_000,

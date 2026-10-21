@@ -330,11 +330,10 @@ impl Engine {
                         ev.entry.threshold,
                         if ev.change == alerts::Change::Fired { "firing" } else { "resolved" }
                     );
-                    if t.thresholds.for_polls.is_some() {
-                        if let Some(e) = &ev.eval {
+                    if t.thresholds.for_polls.is_some()
+                        && let Some(e) = &ev.eval {
                             actions.extend(thresh::transition(&cfg, t, e));
                         }
-                    }
                     actions.extend(alerts::webhook(&cfg, &view, &ev));
                 }
             }
@@ -532,12 +531,11 @@ fn dec(v: &Option<String>) -> Option<BigDecimal> {
 /// MRTG's compensation for agents that report counters as negative
 /// numbers: add 2^31.
 fn fix_negative(v: String) -> String {
-    if v.starts_with('-') {
-        if let Some(d) = linkscope_config::expr::bounded_decimal(&v) {
+    if v.starts_with('-')
+        && let Some(d) = linkscope_config::expr::bounded_decimal(&v) {
             let fixed = d + BigDecimal::from(1u64 << 31);
             return fixed.with_scale(0).to_string();
         }
-    }
     v
 }
 
@@ -549,11 +547,10 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     let mut used = Vec::new();
     t.expr.sources(&mut used);
     for i in &used {
-        if let Some(e) = results.get(*i).and_then(|r| r.error.as_ref()) {
-            if !errors.contains(e) {
+        if let Some(e) = results.get(*i).and_then(|r| r.error.as_ref())
+            && !errors.contains(e) {
                 errors.push(e.clone());
             }
-        }
     }
     // Errors name the target, never the Target text (it holds credentials).
     let eval = |get: &dyn Fn(usize) -> Option<BigDecimal>, dir: &str, errors: &mut Vec<String>| match t.expr.eval_value(get) {
