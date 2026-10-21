@@ -1,0 +1,15 @@
+# LinkScope manual
+
+- [Introduction](introduction.md)
+- [Install and run](install.md)
+- [Moving from MRTG](migrating-from-mrtg.md)
+- [Command line](command-line.md)
+- [Configuration](configuration.md)
+- [cfgmaker](cfgmaker.md)
+- [Web UI](web-ui.md)
+- [Prometheus metrics](metrics.md)
+- [Alerts](alerts.md)
+- [JSON API](api.md)
+- [Security](security.md)
+- [Compatibility with MRTG](compatibility.md)
+- [Troubleshooting](troubleshooting.md)
