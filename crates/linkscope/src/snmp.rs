@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //! Async SNMP client used by the poller and cfgmaker.
 //!
-//! Built on the `snmp2` crate (BER, PDUs, USM). This module adds what MRTG's
-//! `SNMP_Session` provided on top: timeout with retries and exponential
-//! backoff, batching many OIDs per request, recovery from SNMPv1
-//! `noSuchName` and `tooBig` errors, table walks with GETBULK or GETNEXT,
-//! and SNMPv3 engine discovery and time-window resync.
+//! Built on the `async-snmp` crate (BER, PDUs, USM, engine discovery and time
+//! windows), which replaced `snmp2` in 2026-10: `snmp2` changed a v3
+//! session's engine state from a reply before authenticating it. This module
+//! adds what MRTG's `SNMP_Session` provided on top: timeout with retries and
+//! MRTG's backoff (the timeout itself grows), batching many OIDs per request,
+//! recovery from SNMPv1 `noSuchName` and `tooBig` errors, and table walks with
+//! GETBULK or GETNEXT.
 //!
 //! Unlike MRTG (whose default was lenient source matching), replies are only
-//! accepted from the address the request was sent to: the UDP socket is
-//! connected, so the kernel drops datagrams from anywhere else.
+//! accepted from the address the request was sent to (`strict_source`): a
+//! datagram from anywhere else is dropped and the request keeps waiting.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use linkscope_config::{SnmpOptions, SnmpSource, SnmpVersion};
-use snmp2::v3::{Auth, AuthProtocol, Cipher, Security};
-use snmp2::{AsyncSession, Oid, Value};
+use async_snmp::{Auth, AuthProtocol, Client, Oid, PrivProtocol, Retry, UdpHandle, UsmConfig, Value, VarBind};
 use tokio::sync::Mutex;
 
 use crate::oids::parse_numeric;
@@ -41,20 +42,19 @@ pub enum Val {
 }
 
 impl Val {
-    fn from_value(v: &Value<'_>) -> Val {
+    fn from_value(v: &Value) -> Val {
         match v {
-            Value::Integer(i) => Val::Int(*i),
-            Value::Counter32(c) | Value::Unsigned32(c) => Val::Unsigned(u64::from(*c)),
+            Value::Integer(i) => Val::Int(i64::from(*i)),
+            Value::Counter32(c) | Value::Gauge32(c) | Value::UInteger32(c) => Val::Unsigned(u64::from(*c)),
             Value::Counter64(c) => Val::Counter64(*c),
-            Value::Timeticks(t) => Val::TimeTicks(*t),
+            Value::TimeTicks(t) => Val::TimeTicks(*t),
             Value::OctetString(s) => Val::Str(s.to_vec()),
-            Value::ObjectIdentifier(o) => Val::Oid(o.to_id_string()),
+            Value::ObjectIdentifier(o) => Val::Oid(o.to_string()),
             Value::IpAddress(a) => Val::Ip(*a),
             Value::Null => Val::Null,
-            Value::Boolean(b) => Val::Int(i64::from(*b)),
             Value::NoSuchObject | Value::NoSuchInstance => Val::Missing,
             Value::EndOfMibView => Val::EndOfMib,
-            Value::Opaque(o) => Val::Opaque(o.to_vec()),
+            Value::Opaque(o) | Value::Nsap(o) => Val::Opaque(o.to_vec()),
             _ => Val::Missing,
         }
     }
@@ -148,8 +148,10 @@ impl V3Params {
         // password without authentication used to poll in clear, with no authentication.
         let auth = get("authpassword");
         let privacy = get("privpassword");
-        if auth.as_deref().is_some_and(str::is_empty) || privacy.as_deref().is_some_and(str::is_empty) {
-            return Err("SNMPv3 passwords must not be empty".into());
+        // USM derives its keys from a password of at least eight octets (RFC 3414); net-snmp and
+        // the SNMP library refuse shorter ones too.
+        if auth.as_deref().is_some_and(|a| a.len() < 8) || privacy.as_deref().is_some_and(|p| p.len() < 8) {
+            return Err("SNMPv3 passwords must be at least 8 characters long".into());
         }
         if auth.is_none() && (privacy.is_some() || get("privprotocol").is_some()) {
             return Err("SNMPv3 privacy needs authentication: set authpassword too".into());
@@ -170,8 +172,9 @@ impl V3Params {
         })
     }
 
-    fn security(&self) -> Result<Security, String> {
-        let proto = match self.auth_protocol.replace(['-', '_'], "").as_str() {
+    /// The USM user these parameters describe.
+    fn usm(&self) -> Result<UsmConfig, String> {
+        let auth = match self.auth_protocol.replace(['-', '_'], "").as_str() {
             "md5" | "hmacmd5" => AuthProtocol::Md5,
             "sha" | "sha1" | "hmacsha" => AuthProtocol::Sha1,
             "sha224" => AuthProtocol::Sha224,
@@ -180,26 +183,29 @@ impl V3Params {
             "sha512" => AuthProtocol::Sha512,
             p => return Err(format!("unknown authprotocol '{p}'")),
         };
-        let mut sec = match &self.auth_password {
-            Some(a) => Security::new(self.username.as_bytes(), a.as_bytes()).with_auth_protocol(proto),
-            None => Security::new(self.username.as_bytes(), b"").with_auth(Auth::NoAuthNoPriv),
+        let usm = UsmConfig::new(self.username.clone().into_bytes());
+        let usm = match (&self.auth_password, &self.priv_password) {
+            (Some(a), Some(p)) => {
+                let cipher = match self.priv_protocol.replace(['-', '_'], "").as_str() {
+                    "des" | "cbcdes" => PrivProtocol::Des,
+                    "aes" | "aes128" | "cfbaes128" => PrivProtocol::Aes128,
+                    // AES-192 and AES-256 as net-snmp extends their keys (Blumenthal), and as
+                    // Cisco does (Reeder, the `c` names).
+                    "aes192" => PrivProtocol::Aes192Blumenthal,
+                    "aes256" => PrivProtocol::Aes256Blumenthal,
+                    "aes192c" => PrivProtocol::Aes192Reeder,
+                    "aes256c" => PrivProtocol::Aes256Reeder,
+                    c => return Err(format!("unknown privprotocol '{c}'")),
+                };
+                usm.auth_priv(auth, a.as_bytes(), cipher, p.as_bytes()).map_err(|e| e.to_string())?
+            }
+            (Some(a), None) => usm.auth(auth, a.as_bytes()).map_err(|e| e.to_string())?,
+            _ => usm,
         };
-        if let (Some(_), Some(p)) = (&self.auth_password, &self.priv_password) {
-            let cipher = match self.priv_protocol.replace(['-', '_'], "").as_str() {
-                "des" | "cbcdes" => Cipher::Des,
-                "aes" | "aes128" | "cfbaes128" => Cipher::Aes128,
-                "aes192" => Cipher::Aes192,
-                "aes256" => Cipher::Aes256,
-                c => return Err(format!("unknown privprotocol '{c}'")),
-            };
-            sec = sec.with_auth(Auth::AuthPriv { cipher, privacy_password: p.as_bytes().to_vec() });
-        } else if self.auth_password.is_some() {
-            sec = sec.with_auth(Auth::AuthNoPriv);
-        }
-        if let Some(c) = &self.context_name {
-            sec = sec.with_context_name(c);
-        }
-        Ok(sec)
+        Ok(match &self.context_name {
+            Some(c) => usm.context_name(c.clone().into_bytes()),
+            None => usm,
+        })
     }
 }
 
@@ -267,12 +273,11 @@ async fn resolve(ep: &Endpoint) -> Result<SocketAddr, SnmpError> {
 
 /// One open session to one agent. Requests on a session are sequential.
 pub struct Session {
-    inner: AsyncSession,
+    client: Client<UdpHandle>,
     ep: Endpoint,
-    initialized: bool,
     /// The last exchange did not finish with an answer: it failed, or it was dropped mid-way (an
-    /// agent's time budget ran out). The library reuses a request id after a timeout, so a late
-    /// reply to that exchange would be taken for the answer to the next one.
+    /// agent's time budget ran out). The next one starts on a new socket, so no late reply to it
+    /// can be read as the next answer, whatever the library does with request ids.
     unsettled: bool,
 }
 
@@ -284,9 +289,9 @@ struct Resp {
 }
 
 enum Req<'a> {
-    Get(&'a [Oid<'static>]),
-    GetNext(&'a Oid<'static>),
-    Bulk(&'a [Oid<'static>], u32),
+    Get(&'a [Oid]),
+    GetNext(&'a Oid),
+    Bulk(&'a [Oid], u32),
 }
 
 const ERR_TOO_BIG: u32 = 1;
@@ -296,57 +301,47 @@ const ERR_NO_SUCH_NAME: u32 = 2;
 /// position, so an answer for another object (a stray or a stale reply) is no value for this one.
 fn place_values(take: &[usize], want: &[String], varbinds: &[(String, Val)], out: &mut [Val]) {
     for (k, &i) in take.iter().enumerate() {
-        if let Some((oid, v)) = varbinds.get(k) {
-            if *oid == want[i] {
+        if let Some((oid, v)) = varbinds.get(k)
+            && *oid == want[i] {
                 out[i] = v.clone();
             }
-        }
     }
 }
 
-fn to_oid(s: &str) -> Result<Oid<'static>, SnmpError> {
-    let parts = parse_numeric(s).ok_or_else(|| SnmpError::Protocol(format!("bad OID {s}")))?;
-    Oid::from(&parts).map_err(|_| SnmpError::Protocol(format!("bad OID {s}")))
+fn to_oid(s: &str) -> Result<Oid, SnmpError> {
+    // Arcs are 32-bit on the wire (RFC 2578); one that does not fit is no OID, not a truncated one.
+    let parts: Option<Vec<u32>> = parse_numeric(s).and_then(|p| p.into_iter().map(|a| u32::try_from(a).ok()).collect());
+    let parts = parts.ok_or_else(|| SnmpError::Protocol(format!("bad OID {s}")))?;
+    Ok(Oid::from_slice(&parts))
+}
+
+fn varbinds(v: Vec<VarBind>) -> Vec<(String, Val)> {
+    v.into_iter().map(|b| (b.oid.to_string(), Val::from_value(&b.value))).collect()
 }
 
 impl Session {
-    /// Open a session (resolves the host; for v3 the engine is discovered
-    /// lazily on the first request).
+    /// Open a session (resolves the host; for v3 the engine is discovered on the first request).
     pub async fn open(ep: &Endpoint) -> Result<Session, SnmpError> {
         let addr = resolve(ep).await?;
-        let req_id = rand_req_id();
-        let inner = match ep.version {
-            SnmpVersion::V1 => AsyncSession::new_v1(addr, ep.community.as_bytes(), req_id).await,
-            SnmpVersion::V2c => AsyncSession::new_v2c(addr, ep.community.as_bytes(), req_id).await,
-            SnmpVersion::V3 => {
-                let sec = ep.v3.as_ref().ok_or_else(|| SnmpError::V3("missing USM parameters".into()))?.security().map_err(SnmpError::V3)?;
-                AsyncSession::new_v3(addr, req_id, sec).await
-            }
-        }
-        .map_err(|e| SnmpError::Protocol(format!("socket for {}: {e}", ep.display())))?;
-        Ok(Session { inner, ep: ep.clone(), initialized: ep.version != SnmpVersion::V3, unsettled: false })
+        let auth: Auth = match ep.version {
+            SnmpVersion::V1 => Auth::v1(ep.community.as_str()),
+            SnmpVersion::V2c => Auth::v2c(ep.community.as_str()),
+            SnmpVersion::V3 => ep.v3.as_ref().ok_or_else(|| SnmpError::V3("missing USM parameters".into()))?.usm().map_err(SnmpError::V3)?.into(),
+        };
+        // One attempt per call: the retries, and MRTG's growing timeout, are this module's.
+        let client = Client::builder(addr, auth)
+            .strict_source(true)
+            .request_timeout(MAX_TIMEOUT)
+            .retry(Retry::none())
+            .max_oids_per_request(ep.max_varbinds.max(1))
+            .connect()
+            .await
+            .map_err(|e| SnmpError::Protocol(format!("socket for {}: {e}", ep.display())))?;
+        Ok(Session { client, ep: ep.clone(), unsettled: false })
     }
 
     pub fn endpoint(&self) -> &Endpoint {
         &self.ep
-    }
-
-    async fn ensure_init(&mut self) -> Result<(), SnmpError> {
-        if self.initialized {
-            return Ok(());
-        }
-        let mut t = self.ep.timeout;
-        for _ in 0..=self.ep.retries {
-            match tokio::time::timeout(t, self.inner.init()).await {
-                Ok(Ok(())) => {
-                    self.initialized = true;
-                    return Ok(());
-                }
-                Ok(Err(e)) => return Err(SnmpError::V3(format!("{} ({})", e, self.ep.display()))),
-                Err(_) => t = next_timeout(t, self.ep.backoff),
-            }
-        }
-        Err(SnmpError::Timeout(self.ep.display()))
     }
 
     async fn exchange(&mut self, req: &Req<'_>) -> Result<Resp, SnmpError> {
@@ -358,11 +353,9 @@ impl Session {
         self.unsettled = true;
         let (res, rejected) = self.exchange_once(req).await;
         let res = match res {
-            // The v3 library sets a session's engine boots and time from a reply before it has
-            // checked the reply's authentication, so one forged datagram can make every genuine
-            // reply fail from then on. When replies came but were refused, or authentication
-            // failed, start over once: a new socket (a new port to guess) and a fresh discovery.
-            // Plain timeouts (the device is down) do not retry here.
+            // When v3 replies came but were refused, or authentication failed (the agent was
+            // restarted with new keys, or a reply was forged), start over once: a new socket and a
+            // fresh discovery. Plain timeouts (the device is down) do not retry here.
             Err(e) if self.ep.version == SnmpVersion::V3 && (rejected || matches!(e, SnmpError::V3(_))) => {
                 tracing::debug!("SNMPv3 session for {} reopened after: {e}", self.ep.display());
                 self.reopen().await?;
@@ -384,56 +377,53 @@ impl Session {
 
     /// One request with its retries. Also says whether a reply arrived but was refused.
     async fn exchange_once(&mut self, req: &Req<'_>) -> (Result<Resp, SnmpError>, bool) {
-        if let Err(e) = self.ensure_init().await {
-            return (Err(e), false);
-        }
         let mut rejected = false;
         let mut t = self.ep.timeout;
         let mut attempts = 0;
-        let mut resyncs = 0;
         loop {
-            let inner = &mut self.inner;
+            let client = &self.client;
             let fut = async {
-                let pdu = match req {
-                    Req::Get(oids) => {
-                        let refs: Vec<&Oid> = oids.iter().collect();
-                        inner.get_many(&refs).await
-                    }
-                    Req::GetNext(oid) => inner.getnext(oid).await,
-                    Req::Bulk(oids, reps) => {
-                        let refs: Vec<&Oid> = oids.iter().collect();
-                        inner.getbulk(&refs, 0, *reps).await
-                    }
-                };
-                pdu.map(|mut p| Resp {
-                    error_status: p.error_status,
-                    error_index: p.error_index,
-                    varbinds: p.varbinds.by_ref().map(|(o, v)| (o.to_id_string(), Val::from_value(&v))).collect(),
-                })
+                match req {
+                    Req::Get(oids) => client.get_many(oids).await.map(|r| varbinds(r.varbinds)),
+                    Req::GetNext(oid) => client.get_next(oid).await.map(|r| varbinds(r.varbinds)),
+                    Req::Bulk(oids, reps) => client.get_bulk(oids, 0, *reps).await.map(varbinds),
+                }
             };
             let outcome = tokio::time::timeout(t, fut).await;
-            // A reply that came but was refused, not a silence.
-            let refused = matches!(&outcome, Ok(Err(_)));
             match outcome {
-                Ok(Ok(r)) => return (Ok(r), rejected),
-                Ok(Err(snmp2::Error::AuthUpdated)) if resyncs < 3 => {
-                    // v3 time window or engine boots changed; the security
-                    // state is updated, so simply repeat the request.
-                    resyncs += 1;
-                    continue;
-                }
-                Ok(Err(e @ snmp2::Error::AuthFailure(_))) => {
-                    return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), true);
-                }
-                Ok(Err(_)) | Err(_) => {
-                    rejected |= refused;
-                    attempts += 1;
-                    if attempts > self.ep.retries {
-                        return (Err(SnmpError::Timeout(self.ep.display())), rejected);
+                Ok(Ok(varbinds)) => return (Ok(Resp { error_status: 0, error_index: 0, varbinds }), rejected),
+                Ok(Err(e)) => match *e {
+                    // The agent answered with an error-status: the callers decide (v1 noSuchName,
+                    // tooBig, ...), as they did with the PDU's fields.
+                    async_snmp::Error::Snmp { status, index, .. } => {
+                        // An error answer without a known status counts as genErr (5).
+                        let status = match u32::try_from(status.as_i32()) {
+                            Ok(0) | Err(_) => 5,
+                            Ok(s) => s,
+                        };
+                        return (Ok(Resp { error_status: status, error_index: index, varbinds: Vec::new() }), rejected);
                     }
-                    t = next_timeout(t, self.ep.backoff);
-                }
+                    async_snmp::Error::Auth { .. } | async_snmp::Error::Report { .. } => {
+                        return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), true);
+                    }
+                    // A reply that could not be used (it did not decode, or it broke the rules):
+                    // refused, not a silence.
+                    async_snmp::Error::Decode(..) | async_snmp::Error::MalformedResponse { .. } | async_snmp::Error::ResponseShape { .. } => {
+                        rejected = true;
+                    }
+                    // Configuration the library refuses cannot get better by asking again.
+                    async_snmp::Error::Config(_) | async_snmp::Error::Privacy(_) => {
+                        return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), false);
+                    }
+                    _ => {}
+                },
+                Err(_) => {}
             }
+            attempts += 1;
+            if attempts > self.ep.retries {
+                return (Err(SnmpError::Timeout(self.ep.display())), rejected);
+            }
+            t = next_timeout(t, self.ep.backoff);
         }
     }
 
@@ -442,14 +432,14 @@ impl Session {
     /// automatically on `tooBig` / v1 `noSuchName`.
     pub async fn get(&mut self, oids: &[String]) -> Result<Vec<Val>, SnmpError> {
         let mut out = vec![Val::Missing; oids.len()];
-        let parsed: Vec<Option<Oid<'static>>> = oids.iter().map(|o| to_oid(o).ok()).collect();
+        let parsed: Vec<Option<Oid>> = oids.iter().map(|o| to_oid(o).ok()).collect();
         let mut chunk = self.ep.max_varbinds.max(1);
         // The OID each answer must carry, as the library writes it.
-        let want: Vec<String> = parsed.iter().map(|o| o.as_ref().map(|o| o.to_id_string()).unwrap_or_default()).collect();
+        let want: Vec<String> = parsed.iter().map(|o| o.as_ref().map(|o| o.to_string()).unwrap_or_default()).collect();
         let mut pending: Vec<usize> = (0..oids.len()).filter(|&i| parsed[i].is_some()).collect();
         while !pending.is_empty() {
             let take: Vec<usize> = pending.iter().copied().take(chunk).collect();
-            let batch: Vec<Oid<'static>> = take.iter().map(|&i| parsed[i].clone().expect("parsed")).collect();
+            let batch: Vec<Oid> = take.iter().filter_map(|&i| parsed[i].clone()).collect();
             let r = self.exchange(&Req::Get(&batch)).await?;
             match r.error_status {
                 0 => {
@@ -573,13 +563,6 @@ pub fn oid_gt(a: &str, b: &str) -> bool {
     let pa = parse_numeric(a).unwrap_or_default();
     let pb = parse_numeric(b).unwrap_or_default();
     pa > pb
-}
-
-fn rand_req_id() -> i32 {
-    use std::hash::{BuildHasher, Hasher};
-    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
-    (h.finish() & 0x3fff_ffff) as i32
 }
 
 /// Cache of SNMPv3 sessions (engine discovery is a round trip, so v3
