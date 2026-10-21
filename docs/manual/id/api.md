@@ -32,6 +32,7 @@ Galat berupa status HTTP dengan pesan teks biasa:
 API tidak pernah mengembalikan rahasia. Community SNMP di `Target[]` disamarkan
 (`2:•••@192.0.2.1`), dan kata sandi serta kunci SNMPv3, baris perintah eksternal, URL webhook,
 rahasianya, dan kata sandi email diganti dengan `•••` di mana pun muncul, termasuk di pesan galat.
+Path program ambang dan alamat email ambang juga tidak diberikan, hanya apakah keduanya diatur.
 HTML dari konfigurasi (`Title[]`, `PageTop[]`, `PageFoot[]`, legenda) dibersihkan menjadi subset
 yang aman: struktur dan format teks, serta tautan hanya ke `http` dan `https`.
 
@@ -154,7 +155,7 @@ Semua isi item `/api/targets`, ditambah pengaturan tampilan target:
 | `xsize`, `ysize`, `ytics`, `yticsfactor` | number | `XSize[]`, `YSize[]`, `YTics[]`, `YTicsFactor[]`. |
 | `abs_max` | number | `AbsMax[]`. |
 | `timezone` | string atau null | `Timezone[]`. |
-| `thresholds` | object | Pengaturan ambang target: `min_i`, `min_o`, `max_i`, `max_o`, `desc`, `prog_i`, `prog_o`, `prog_ok_i`, `prog_ok_o`, `mail_address`, dan `for_polls` (`ThreshFor[]`). Yang tidak diatur bernilai null. |
+| `thresholds` | object | Pengaturan ambang target: `min_i`, `min_o`, `max_i`, `max_o`, `desc`, dan `for_polls` (`ThreshFor[]`), bernilai null bila tidak diatur; `programs` (boolean: ada `ThreshProg*[]` yang diatur) dan `mail` (boolean: `ThreshMailAddress[]` diatur). Program mana dan alamat mana tidak diberikan. |
 
 ## GET /api/targets/{name}/series
 

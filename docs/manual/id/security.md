@@ -41,6 +41,8 @@ rahasia penanda tangan webhook, dan kata sandi mail. Semua itu tidak pernah kelu
 - Kredensial tidak diikutkan saat pengaturan diserialisasi.
 - URL webhook, rahasianya, dan kata sandi mail tidak pernah muncul di antarmuka web, API,
   `/metrics`, webhook, atau pesan kesalahan.
+- Path program ambang dan alamat email ambang juga tidak ada di API: API hanya menyebut apakah
+  sebuah target memilikinya.
 - Sebuah pengujian menanam rahasia di konfigurasi lalu mencarinya di output setiap endpoint.
 
 ## Antarmuka web

@@ -100,7 +100,10 @@ export interface Thresholds {
   desc: string | null
   /** ThreshFor[]: polls a bound must stay broken before it fires. */
   for_polls: number | null
-  [key: string]: string | number | null
+  /** A ThreshProg*[] is set (which one is not given). */
+  programs: boolean
+  /** ThreshMailAddress[] is set (the address is not given). */
+  mail: boolean
 }
 
 export interface TargetDetail extends TargetSummary {
