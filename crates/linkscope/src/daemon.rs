@@ -55,8 +55,10 @@ pub struct PidFile {
 }
 
 impl PidFile {
-    /// Create the PID file. A stale file (its process is gone) is replaced;
-    /// a live one is an error.
+    /// Create the PID file, with the instance lock already held ([`acquire_lock`]). The lock is
+    /// the liveness check: whatever PID file is left is stale and is replaced without being read.
+    /// It was read by name as root, so a symlink swapped in after the check was followed, a FIFO
+    /// hung the start, and a PID reused by another process refused to start.
     pub fn create(path: &Path, owner: Option<(Uid, Gid)>) -> Result<PidFile> {
         for attempt in 0..2 {
             match crate::fsutil::create_new(path, 0o644) {
@@ -69,21 +71,10 @@ impl PidFile {
                     return Ok(p);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt == 0 => {
-                    let meta = std::fs::symlink_metadata(path)?;
-                    if meta.file_type().is_symlink() {
-                        bail!("{} is a symlink; refusing to use it", path.display());
+                    if std::fs::symlink_metadata(path)?.is_dir() {
+                        bail!("{} is a directory", path.display());
                     }
-                    let old = std::fs::read_to_string(path).unwrap_or_default();
-                    if let Ok(pid) = old.trim().parse::<i32>() {
-                        // EPERM means the process exists but is not ours: still alive.
-                        let alive = match nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None) {
-                            Ok(()) => true,
-                            Err(e) => e == nix::errno::Errno::EPERM,
-                        };
-                        if pid > 0 && alive {
-                            bail!("LinkScope is already running with pid {pid} (pid file {})", path.display());
-                        }
-                    }
+                    // Unlinking removes a symlink itself, never what it points to.
                     std::fs::remove_file(path).with_context(|| format!("removing stale {}", path.display()))?;
                 }
                 Err(e) => return Err(e).with_context(|| format!("creating pid file {}", path.display())),
@@ -206,21 +197,36 @@ pub fn daemonize() -> Result<()> {
 mod tests {
     use super::*;
 
+    /// Created with the lock held, the PID file left behind is replaced without being read: a
+    /// symlink is unlinked (its target untouched), a FIFO does not hang the start, a PID reused
+    /// by another process does not refuse it. The lock keeps a second instance out.
     #[test]
-    fn pid_file_refuses_symlink_and_replaces_stale() {
+    fn pid_file_is_replaced_unread() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("x.pid");
-        std::fs::write(&p, "999999999\n").unwrap();
+        std::fs::write(&p, format!("{}\n", std::process::id())).unwrap();
         let pf = PidFile::create(&p, None).unwrap();
         assert_eq!(std::fs::read_to_string(&p).unwrap().trim(), std::process::id().to_string());
-        assert!(PidFile::create(&p, None).is_err(), "live pid must block");
         drop(pf);
         assert!(!p.exists());
+
         let victim = dir.path().join("victim");
         std::fs::write(&victim, "data").unwrap();
         std::os::unix::fs::symlink(&victim, &p).unwrap();
-        assert!(PidFile::create(&p, None).is_err());
+        let pf = PidFile::create(&p, None).unwrap();
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "data");
+        assert!(!std::fs::symlink_metadata(&p).unwrap().file_type().is_symlink());
+        drop(pf);
+
+        nix::unistd::mkfifo(&p, nix::sys::stat::Mode::from_bits_truncate(0o600)).unwrap();
+        let pf = PidFile::create(&p, None).unwrap();
+        assert!(std::fs::symlink_metadata(&p).unwrap().is_file());
+        drop(pf);
+
+        let lock = dir.path().join("x_l");
+        let held = acquire_lock(&lock).unwrap();
+        assert!(acquire_lock(&lock).is_err(), "a second instance is kept out by the lock");
+        drop(held);
     }
 
     #[test]

@@ -110,7 +110,15 @@ Lihat [Keamanan](security.md) untuk model lengkapnya.
   global baru: `WebListen`, `ExecShell`, `AlertWebhook`, `AlertWebhookSecret`, `AlertMailUser`,
   `AlertMailPassword`. Kata kunci per target baru: `ThreshFor[]`. MRTG menolak kata kunci ini, jadi
   jangan masukkan ke konfigurasi yang masih Anda pakai bersama MRTG.
-- `ThreshMailServer` juga menerima `host:port`.
+- `ThreshMailServer` juga menerima `host:port`. Nilainya diperiksa dari bentuknya, tidak dicari di
+  DNS (pencarian MRTG memblokir proses muat ulang); nama yang tidak dapat di-resolve terlihat di log
+  saat email dikirim.
+- `Include:` relatif hanya dibaca dari direktori konfigurasi utama, tidak dari direktori kerja
+  lebih dulu.
+- Log yang mencatat pembaruan lebih dari sehari di masa depan disisihkan sebagai `<name>.future` dan
+  log baru dimulai (MRTG menolak memperbaruinya sampai waktu itu tiba). Log yang baris pertamanya
+  berisi nilai terlalu panjang untuk dibandingkan memulai lajunya dari awal, alih-alih menolak setiap
+  pembaruan.
 - Ambang batas pada target tanpa `ThreshFor[]` menjalankan program dan email persis seperti MRTG.
   Dengan `ThreshFor[]`, keduanya berjalan sekali saat peringatan aktif dan sekali saat pulih.
   Dalam kedua cara, status peringatan juga disimpan di `<config>.alerts`, untuk antarmuka web dan

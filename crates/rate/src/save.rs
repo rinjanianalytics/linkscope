@@ -32,25 +32,15 @@ pub(crate) fn read_file(path: &Path) -> Option<Vec<u8>> {
 /// Largest log file that will be read.
 pub const MAX_LOG_BYTES: u64 = 4 * 1024 * 1024;
 
-#[cfg(target_os = "linux")]
-const O_NONBLOCK: i32 = 0o4000;
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
-const O_NONBLOCK: i32 = 0x0004;
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
+/// `O_NONBLOCK` and `O_NOFOLLOW` as the platform defines them. They were hard-coded per target, and
+/// an architecture missing from the list (mips, sparc, ...) silently got 0: no hardening at all.
+#[cfg(unix)]
+const O_NONBLOCK: i32 = libc::O_NONBLOCK;
+#[cfg(not(unix))]
 const O_NONBLOCK: i32 = 0;
-
-/// `O_NOFOLLOW` for the targets we know; elsewhere `O_EXCL` alone already
-/// refuses to open an existing path, symlink or not.
-#[cfg(all(target_os = "linux", any(target_arch = "x86", target_arch = "x86_64", target_arch = "s390x", target_arch = "riscv64", target_arch = "loongarch64")))]
-const O_NOFOLLOW: i32 = 0o400000;
-#[cfg(all(target_os = "linux", any(target_arch = "aarch64", target_arch = "arm", target_arch = "powerpc", target_arch = "powerpc64")))]
-const O_NOFOLLOW: i32 = 0o100000;
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
-const O_NOFOLLOW: i32 = 0x0100;
-#[cfg(not(any(
-    all(target_os = "linux", any(target_arch = "x86", target_arch = "x86_64", target_arch = "s390x", target_arch = "riscv64", target_arch = "loongarch64", target_arch = "aarch64", target_arch = "arm", target_arch = "powerpc", target_arch = "powerpc64")),
-    target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"
-)))]
+#[cfg(unix)]
+const O_NOFOLLOW: i32 = libc::O_NOFOLLOW;
+#[cfg(not(unix))]
 const O_NOFOLLOW: i32 = 0;
 
 fn create_exclusive(path: &Path) -> io::Result<File> {

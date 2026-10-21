@@ -50,6 +50,11 @@ fn bad_values_are_refused_without_repeating_them() {
     assert!(e.contains("at least 16 characters") && !e.contains("short-SECRET"), "{e}");
     let e = load("ThreshFor[a]: 0\n").unwrap_err();
     assert!(e.contains("CFG Error in \"threshfor[]\": 0 must be a Number bigger than 0"), "{e}");
-    let e = load("ThreshMailServer: no-such-host.invalid:587\nThreshMailSender: a@b.c\n").unwrap_err();
+    let e = load("ThreshMailServer: not a host!:587\nThreshMailSender: a@b.c\n").unwrap_err();
     assert!(e.contains("Unknown mailserver hostname"), "{e}");
+    // Judged by its form: no DNS lookup blocks --check or a reload (a name that does not resolve
+    // shows when mail is sent).
+    let started = std::time::Instant::now();
+    assert!(load("ThreshMailServer: no-such-host.invalid:587\nThreshMailSender: a@b.c\n").is_ok());
+    assert!(started.elapsed().as_secs() < 2);
 }

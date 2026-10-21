@@ -116,12 +116,18 @@ MRTG followed symlinks as root (when changing directory owners with `--fhs`, and
 file before a later fix). LinkScope:
 
 - opens directories with `O_DIRECTORY|O_NOFOLLOW` and changes their owner with `fchown`;
-- creates the pid file with `O_EXCL|O_NOFOLLOW`;
+- takes its lock before it creates the pid file with `O_EXCL|O_NOFOLLOW`, and never reads a pid
+  file left behind (the lock tells a running instance apart; a stale file is unlinked);
 - writes every output file (logs, cache, threshold state) to a new temporary file with an
   unpredictable name, created `O_EXCL|O_NOFOLLOW`, then renames it into place;
-- refuses `Directory[]` subdirectories that are symlinks;
+- refuses `Directory[]` subdirectories that are symlinks, creates them one level at a time, and
+  reads and writes a target's logs through the directory it opened (so a component swapped for a
+  symlink after the check cannot redirect them);
 - reads logs with `O_NOFOLLOW|O_NONBLOCK`, only if they are regular files, and at most 4 MB, so a
-  FIFO or a device in place of a log cannot hang or exhaust the daemon.
+  FIFO or a device in place of a log cannot hang or exhaust the daemon; at most 16 times a full
+  log's lines are kept, so a log of blank lines cannot take hundreds of MB;
+- reads configuration files without blocking, regular files only, at most 1,000 files and 64 MB
+  for one configuration with its includes.
 
 The `.ok` cache and the `.alerts` state are written owner only (mode 600), because the cache, like
 MRTG's, names each device by its SNMP community; a file left readable by others is written again

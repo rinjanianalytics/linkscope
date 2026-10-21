@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use bigdecimal::BigDecimal;
 use linkscope_config::{Config, IfSel, SnmpConn, SnmpSource, Source, Target};
-use linkscope_rate::{Mode, Period, RateLog, SummaryOpts, UpdateOutcome};
+use linkscope_rate::{InputError, Mode, Period, RateLog, SummaryOpts, UpdateOutcome};
 use linkscope_web::{CycleInfo, SharedState, TargetLive};
 use tokio::sync::Semaphore;
 
@@ -109,6 +109,56 @@ fn check_no_symlinks(base: &Path, rel: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// A target's log directory, opened one component at a time below LogDir without following a
+/// symlink, and a path that names that opened directory itself (`/proc/self/fd/N` on Linux).
+/// Checked by name and then used by name, a component swapped for a symlink in between could
+/// redirect the reads and writes (2026-10-21); through the opened directory it cannot. Without
+/// `/proc`, the components are checked by name as before.
+struct LogDir {
+    /// Keeps the descriptor `path` names open.
+    _held: Option<std::fs::File>,
+    path: PathBuf,
+}
+
+fn open_log_dir(base: &Path, rel: &str) -> Result<LogDir, String> {
+    if rel.is_empty() {
+        return Ok(LogDir { _held: None, path: base.to_path_buf() });
+    }
+    #[cfg(target_os = "linux")]
+    if let Some(d) = open_beneath(base, rel)? {
+        return Ok(d);
+    }
+    check_no_symlinks(base, rel)?;
+    Ok(LogDir { _held: None, path: base.join(rel) })
+}
+
+/// `Ok(None)` when the directory cannot be held this way (no `/proc`, LogDir missing).
+#[cfg(target_os = "linux")]
+fn open_beneath(base: &Path, rel: &str) -> Result<Option<LogDir>, String> {
+    use std::os::fd::AsRawFd;
+    use std::os::unix::fs::OpenOptionsExt;
+    let open = |p: &Path, flags: i32| std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC | flags).open(p);
+    if !Path::new("/proc/self/fd").is_dir() {
+        return Ok(None);
+    }
+    // LogDir itself is trusted (it may be a symlink the administrator made).
+    let Ok(mut dir) = open(base, 0) else { return Ok(None) };
+    let mut shown = base.to_path_buf();
+    for c in Path::new(rel).components() {
+        shown.push(c);
+        let next = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd())).join(c);
+        dir = match open(&next, libc::O_NOFOLLOW) {
+            Ok(d) => d,
+            Err(e) if matches!(e.raw_os_error(), Some(libc::ELOOP) | Some(libc::ENOTDIR)) => {
+                return Err(format!("{} is a symlink or not a directory; refusing to write logs through it", shown.display()));
+            }
+            Err(e) => return Err(format!("{}: {e}", shown.display())),
+        };
+    }
+    let path = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()));
+    Ok(Some(LogDir { _held: Some(dir), path }))
 }
 
 /// The program name of an external command, for messages (the full
@@ -549,13 +599,14 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
         Outcome { live, actions: Vec::new(), evals: Vec::new(), defined, write_failed: true }
     };
 
-    if !t.directory.is_empty() {
-        if let Err(e) = check_no_symlinks(&cfg.global.log_dir, &t.directory) {
+    let held = match open_log_dir(&cfg.global.log_dir, &t.directory) {
+        Ok(d) => d,
+        Err(e) => {
             errors.push(e);
             return fail(live, errors);
         }
-    }
-    let dir = log_dir(cfg, t);
+    };
+    let dir = held.path.clone();
     // MaxAge: refuse to update a log that has not been written for too long.
     if let Some(max_age) = cfg.global.max_age {
         let path = dir.join(format!("{}.log", t.name));
@@ -580,11 +631,12 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     let mut actions = Vec::new();
     let mut evals = Vec::new();
     let mut write_failed = false;
-    match log.update(time, input.as_deref().unwrap_or("-1"), output.as_deref().unwrap_or("-1"), abs_max, mode, t.options.unknaszero) {
+    let raw = (input.as_deref().unwrap_or("-1"), output.as_deref().unwrap_or("-1"));
+    match update_log(&mut log, &dir, &t.name, time, raw, abs_max, mode, t.options.unknaszero) {
         UpdateOutcome::Updated => {
             if let Some((_, i, o)) = log.latest_rate() {
-                live.cur_in = Some(i);
-                live.cur_out = Some(o);
+                live.cur_in = known_rate(i);
+                live.cur_out = known_rate(o);
             }
             if let Err(e) = log.save_unsynced(&dir, &t.name) {
                 errors.push(format!("writing log for {}: {e}", t.name));
@@ -600,7 +652,7 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
                     dorelpercent: t.options.dorelpercent,
                 };
                 let s = log.summarize(time, Period::Day, &opts);
-                evals = thresh::evaluate(t, Some(s.cur_in as f64), Some(s.cur_out as f64));
+                evals = thresh::evaluate(t, known_rate(s.cur_in as f64), known_rate(s.cur_out as f64));
                 // ThreshFor[] targets act on alert changes instead (see alerts.rs).
                 if t.thresholds.for_polls.is_none() {
                     actions = thresh::check_evals(cfg, t, &evals);
@@ -618,6 +670,47 @@ fn process_target(cfg: &Config, t: &Target, results: &[SourceResult], extra: &Ex
     }
     live.failed = write_failed;
     Outcome { live, actions, evals, defined, write_failed }
+}
+
+/// `RateLog::update`, recovering two damaged logs that otherwise refused every update and were
+/// never rewritten, so their target stayed stuck:
+/// * line 1 holds a value too long to diff (values LinkScope reads are at most 190 digits): that
+///   value is forgotten and the rate starts afresh;
+/// * the last update is more than [`FUTURE_LOG`] ahead of now: the log is set aside as
+///   `<name>.future` (kept for inspection) and a new one started.
+#[allow(clippy::too_many_arguments)]
+fn update_log(log: &mut RateLog, dir: &Path, name: &str, time: i64, raw: (&str, &str), abs_max: i64, mode: Mode, unknaszero: bool) -> UpdateOutcome {
+    let mut outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
+    if outcome == UpdateOutcome::Rejected(InputError::TooLongForDiff) {
+        tracing::warn!("{name}: the log's last value is too long to compare with; starting the rate afresh");
+        log.forget_last_values();
+        outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
+    }
+    if outcome == UpdateOutcome::TimeWarp && log.last_time() > time.saturating_add(FUTURE_LOG) {
+        let aside = dir.join(format!("{name}.future"));
+        match std::fs::rename(dir.join(format!("{name}.log")), &aside) {
+            Ok(()) => tracing::error!(
+                "{name}: the log's last update ({}) is more than a day ahead of now; set aside as {} and a new log started",
+                log.last_time(),
+                aside.display()
+            ),
+            Err(e) => tracing::error!("{name}: the log's last update is more than a day ahead of now; a new log is started ({e})"),
+        }
+        *log = RateLog::fresh(time);
+        outcome = log.update(time, raw.0, raw.1, abs_max, mode, unknaszero);
+    }
+    outcome
+}
+
+/// How far ahead of now a log's last update may be before the log is taken as damaged. A clock
+/// that was wrong by more than a day is no measurement either.
+const FUTURE_LOG: i64 = 86_400;
+
+/// A rate as LinkScope uses it. Two history lines with the same time make rateup divide 0 by 0,
+/// which it writes as the smallest 64-bit number; that is no rate (read as one, it is hugely
+/// negative and could fire a `ThreshMin` alert). The log keeps it, byte for byte like rateup.
+fn known_rate(v: f64) -> Option<f64> {
+    (v != i64::MIN as f64).then_some(v)
 }
 
 /// Flush the filesystem holding `dir` (Linux `syncfs`; `sync` elsewhere).
@@ -678,6 +771,42 @@ mod tests {
     }
 
     #[test]
+    fn a_damaged_log_is_recovered_instead_of_refusing_every_update() {
+        let d = tempfile::tempdir().unwrap();
+        let now = 1_700_000_000;
+        // Line 1 with a value too long to diff: refused for ever before.
+        let good = String::from_utf8(RateLog::fresh(now - 600).render_bytes()).unwrap();
+        let body = good.split_once('\n').unwrap().1;
+        let long = format!("{} {} {}\n{body}", now - 300, "7".repeat(199), "8");
+        let mut log = RateLog::from_bytes(Some(long.as_bytes()), None, now).unwrap();
+        assert_eq!(log.update(now, "1000", "2000", i64::MAX, Mode::Counter, false), UpdateOutcome::Rejected(InputError::TooLongForDiff));
+        let mut log = RateLog::from_bytes(Some(long.as_bytes()), None, now).unwrap();
+        assert_eq!(update_log(&mut log, d.path(), "t", now, ("1000", "2000"), i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
+        assert_eq!(log.last_raw(), ("1000", "2000"));
+
+        // An update far in the future: the log is set aside and a new one started.
+        let ahead = format!("{} 5 6\n{body}", now + 10 * 86_400);
+        std::fs::write(d.path().join("t.log"), &ahead).unwrap();
+        let mut log = RateLog::load(d.path(), "t", now).unwrap();
+        assert_eq!(update_log(&mut log, d.path(), "t", now, ("1000", "2000"), i64::MAX, Mode::Counter, false), UpdateOutcome::Updated);
+        assert_eq!(std::fs::read_to_string(d.path().join("t.future")).unwrap(), ahead);
+        assert_eq!(log.last_time(), now);
+        // A clock a little behind the log is still MRTG's time warp: nothing changes.
+        let behind = format!("{} 5 6\n{body}", now + 600);
+        std::fs::write(d.path().join("u.log"), &behind).unwrap();
+        let mut log = RateLog::load(d.path(), "u", now).unwrap();
+        assert_eq!(update_log(&mut log, d.path(), "u", now, ("1", "2"), i64::MAX, Mode::Counter, false), UpdateOutcome::TimeWarp);
+        assert!(!d.path().join("u.future").exists());
+    }
+
+    #[test]
+    fn a_zero_over_zero_rate_is_no_rate() {
+        assert_eq!(known_rate(i64::MIN as f64), None);
+        assert_eq!(known_rate(-5.0), Some(-5.0));
+        assert_eq!(known_rate(1250.0), Some(1250.0));
+    }
+
+    #[test]
     fn program_name_hides_arguments() {
         assert_eq!(program_name("/usr/bin/snmpget -c s3cret host oid"), "snmpget");
         assert_eq!(program_name("'/opt/my tools/x.sh' --pw=x"), "x.sh");
@@ -690,5 +819,26 @@ mod tests {
         std::os::unix::fs::symlink(d.path().join("real"), d.path().join("link")).unwrap();
         assert!(check_no_symlinks(d.path(), "real").is_ok());
         assert!(check_no_symlinks(d.path(), "link").is_err());
+        assert!(open_log_dir(d.path(), "real").is_ok());
+        assert!(open_log_dir(d.path(), "link").is_err());
+    }
+
+    /// The directory checked is the directory written: swapping it for a symlink after the check
+    /// changes nothing (it did when the path was checked by name and then used by name).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_log_directory_swapped_for_a_symlink_is_still_the_one_written() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("core/edge")).unwrap();
+        std::fs::create_dir(d.path().join("elsewhere")).unwrap();
+        let held = open_log_dir(d.path(), "core/edge").unwrap();
+        std::fs::rename(d.path().join("core/edge"), d.path().join("core/moved")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("elsewhere"), d.path().join("core/edge")).unwrap();
+        let log = RateLog::fresh(1_700_000_000);
+        log.save_unsynced(&held.path, "t").unwrap();
+        assert!(d.path().join("core/moved/t.log").is_file());
+        assert!(!d.path().join("elsewhere/t.log").exists());
+        // And it is refused by name from now on.
+        assert!(open_log_dir(d.path(), "core/edge").is_err());
     }
 }

@@ -54,10 +54,13 @@ Directory[_]: routers
 
 ### Include
 
-`Include: file` membaca berkas lain di titik tersebut. Path relatif dicoba apa adanya, lalu relatif
-terhadap direktori berkas konfigurasi utama. Path dengan `*` adalah glob; LinkScope membaca berkas
-yang cocok dalam urutan terurut (MRTG membacanya dalam urutan terbalik). Include boleh bersarang
-hingga 16 tingkat, dan berkas yang meng-include dirinya sendiri adalah kesalahan.
+`Include: file` membaca berkas lain di titik tersebut. Path relatif dihitung terhadap direktori
+berkas konfigurasi utama (MRTG mencoba direktori kerja lebih dulu, sehingga tempat ia dijalankan
+menentukan berkas mana yang dibaca). Path dengan `*` adalah glob; LinkScope membaca berkas yang
+cocok dalam urutan terurut (MRTG membacanya dalam urutan terbalik). Include boleh bersarang hingga
+16 tingkat, berkas yang meng-include dirinya sendiri adalah kesalahan, dan satu konfigurasi membaca
+paling banyak 1.000 berkas dan 64 MB secara keseluruhan. Berkas yang di-include harus berkas biasa:
+FIFO atau berkas perangkat ditolak.
 
 ### Berkas tepercaya
 

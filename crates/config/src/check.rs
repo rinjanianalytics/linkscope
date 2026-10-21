@@ -299,6 +299,36 @@ fn mkdirs(dir: &Path, opts: &CheckOptions, errors: &mut Vec<String>) {
     }
 }
 
+/// Create `Directory[]` below LogDir one level at a time, refusing a level that is a symlink.
+/// `create_dir_all` followed them, so another account able to write LogDir could make
+/// LinkScope create directories wherever it pointed. LogDir itself is trusted.
+fn mkdirs_beneath(base: &Path, rel: &str, errors: &mut Vec<String>) {
+    let mut p = base.to_path_buf();
+    for c in Path::new(rel).components() {
+        p.push(c);
+        match fs::symlink_metadata(&p) {
+            Ok(m) if m.file_type().is_symlink() => {
+                errors.push(format!("{} is a symlink; refusing to create log directories through it", p.display()));
+                return;
+            }
+            Ok(m) if m.is_dir() => {}
+            Ok(_) => {
+                errors.push(format!("{} is not a directory", p.display()));
+                return;
+            }
+            // mkdir does not follow a symlink in its last component: one made in between fails.
+            Err(_) => {
+                if let Err(e) = fs::DirBuilder::new().mode(0o755).create(&p) {
+                    if !(e.kind() == std::io::ErrorKind::AlreadyExists && p.is_dir() && !p.is_symlink()) {
+                        errors.push(format!("cannot create directory {}: {e}", p.display()));
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn yes(v: Option<&String>) -> bool {
     v.is_some_and(|v| v.eq_ignore_ascii_case("yes"))
 }
@@ -340,7 +370,7 @@ pub fn create_dirs(cfg: &Config) -> Result<(), ConfigError> {
     mkdirs(&cfg.global.log_dir, &opts, &mut errors);
     for t in &cfg.targets {
         if !t.directory.is_empty() {
-            mkdirs(&cfg.global.log_dir.join(&t.directory), &opts, &mut errors);
+            mkdirs_beneath(&cfg.global.log_dir, &t.directory, &mut errors);
         }
     }
     if errors.is_empty() { Ok(()) } else { Err(ConfigError::Invalid(errors)) }
@@ -801,7 +831,7 @@ pub fn target_keywords(raw: &RawConfig, name: &str) -> IndexMap<String, String> 
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_directory, program_path};
+    use super::{fs, mkdirs_beneath, normalize_directory, program_path};
 
     #[test]
     fn a_threshold_program_is_run_as_the_file_that_was_checked() {
@@ -811,6 +841,24 @@ mod tests {
         assert_eq!(rel, std::env::current_dir().unwrap().join("bin/notify").to_string_lossy());
         // A bare name is the file in the working directory, as checked, not one found on PATH.
         assert!(program_path("notify".into()).ends_with("/notify"));
+    }
+
+    #[test]
+    fn log_directories_are_not_created_through_a_symlink() {
+        let d = tempfile::tempdir().unwrap();
+        let (logs, elsewhere) = (d.path().join("logs"), d.path().join("elsewhere"));
+        fs::create_dir_all(&logs).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, logs.join("core")).unwrap();
+        let mut errors = Vec::new();
+        mkdirs_beneath(&logs, "core/edge", &mut errors);
+        assert!(errors.len() == 1 && errors[0].contains("symlink"), "{errors:?}");
+        assert!(!elsewhere.join("edge").exists());
+        errors.clear();
+        mkdirs_beneath(&logs, "site/edge", &mut errors);
+        assert!(errors.is_empty() && logs.join("site/edge").is_dir(), "{errors:?}");
+        mkdirs_beneath(&logs, "site/edge", &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]

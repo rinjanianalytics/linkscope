@@ -120,14 +120,21 @@ MRTG mengikuti symlink sebagai root (saat mengubah pemilik direktori dengan `--f
 berkas pid sebelum ada perbaikan). LinkScope:
 
 - membuka direktori dengan `O_DIRECTORY|O_NOFOLLOW` dan mengubah pemiliknya dengan `fchown`;
-- membuat berkas pid dengan `O_EXCL|O_NOFOLLOW`;
+- mengambil kuncinya sebelum membuat berkas pid dengan `O_EXCL|O_NOFOLLOW`, dan tidak pernah
+  membaca berkas pid yang tertinggal (kunci yang membedakan instans yang sedang berjalan; berkas
+  basi di-unlink);
 - menulis setiap berkas output (log, cache, status ambang batas) ke berkas sementara baru dengan
   nama yang tidak dapat ditebak, dibuat dengan `O_EXCL|O_NOFOLLOW`, lalu mengganti namanya ke tempat
   tujuan;
-- menolak subdirektori `Directory[]` yang berupa symlink;
+- menolak subdirektori `Directory[]` yang berupa symlink, membuatnya satu tingkat demi satu
+  tingkat, serta membaca dan menulis log target melalui direktori yang dibukanya (sehingga komponen
+  yang ditukar dengan symlink setelah pemeriksaan tidak dapat mengalihkannya);
 - membaca log dengan `O_NOFOLLOW|O_NONBLOCK`, hanya jika berupa berkas biasa, dan paling banyak
   4 MB, sehingga FIFO atau berkas perangkat di tempat log tidak dapat membuat daemon macet atau
-  kehabisan sumber daya.
+  kehabisan sumber daya; paling banyak 16 kali jumlah baris log penuh yang disimpan, sehingga log
+  berisi baris kosong tidak dapat memakan ratusan MB;
+- membaca berkas konfigurasi tanpa memblokir, hanya berkas biasa, paling banyak 1.000 berkas dan
+  64 MB untuk satu konfigurasi beserta include-nya.
 
 Cache `.ok` dan status `.alerts` ditulis hanya untuk pemiliknya (mode 600), karena cache, seperti
 milik MRTG, menyebut setiap perangkat dengan community SNMP-nya; berkas yang masih dapat dibaca pihak
