@@ -165,6 +165,90 @@ Found while writing it:
       missing-page message; no sideways scroll and no errors, light and dark. On the lab since
       2026-10-21 11:13 WIB (`linkscope-lab` on `main`, a169b43), over the tailnet at port 8443.
 
+## Security assessment before going public (2026-10-21)
+
+The repository is about to go public, and AI-driven tools now read source, fuzz parsers and probe
+listeners at scale. The owner asked for hidden bugs to be found before they do.
+
+- **Method:** five reviews, one per attacker position: anyone who reaches the web UI, a polled
+  device or a spoofed reply, whoever influences the configuration, a local user, and the
+  outbound alerts. Also `cargo audit`, `npm audit`, and live tests against a throwaway instance.
+  The report stays local, not in this repository.
+- **Found:** 3 high, 10 medium, and a list of low and informational items. The main defenses
+  held:
+  - no shell without `ExecShell`;
+  - no path traversal or XSS from the web;
+  - no mail downgrade with a login;
+  - a fail-closed privilege drop;
+  - BER decoding bounds-checked.
+- **Fixed** in #8 (the highs and RUSTSEC-2026-0382) and #9 (the mediums). `docs/SECURITY.md`
+  lists each one, who could do it and what LinkScope does now.
+- **Behavior that changed:**
+  - The UI answers only to IP addresses, `localhost` and the names in the new `WebHosts:`
+    keyword.
+  - A config is refused when any directory on the way to it lets another account rename it.
+  - SNMPv3 settings that ask for less security than they seem to are an error.
+  - `.ok` and `.alerts` are written owner only.
+- **Pinned by tests:**
+  - `tests/listener.rs`: header timeout.
+  - `tests/host.rs`: Host check.
+  - `tests/no_secrets.rs`: program paths and the mail address too.
+  - The width, chain and SNMPv3 tests, and the trust rules per directory.
+
+  A change that weakens one of these needs the owner's OK.
+
+- [x] The high and medium findings fixed, tested and on the lab.
+      2026-10-21, before the fix:
+      - About 1,100 half-sent HTTP requests used all 1,024 descriptors.
+      - The UI stopped, and the next cycle opened no SNMP socket and wrote no log.
+      - `--check` panicked on `Title[é]: x`.
+      - The lab's `.ok` (with the community) was 0644.
+
+      After the fix, under the same attack:
+      - The daemon peaked at 268 descriptors, and `/healthz` answered in 5.1 s.
+      - A cycle during a 330 s sustained attack had 0 log write failures.
+      - `Title[é]` gives ordinary errors.
+
+      Overall: `cargo test --workspace` 93 pass, clippy clean on the three crates. On the lab since
+      12:04 WIB (`main`, f7d8923, `WebHosts:` set for the tailnet name):
+      - first cycle 2 of 2 ok, no write failures;
+      - a foreign Host gets 421, the tailnet `/docs` gets 200;
+      - PathScope's network reads `/metrics` (200);
+      - `.ok` and `.alerts` are 0600.
+
+Low and informational, not fixed yet:
+- **snmp2** (the root of the v3 finding stays upstream):
+  - a zero-length INTEGER and engine-time arithmetic overflow (panics in debug or fuzz builds);
+  - GET values matched by position, not OID;
+  - a late v3 reply accepted for a later request;
+  - a non-constant-time HMAC compare.
+- **A hostile device:** walks and the `.ok` cache can grow to hundreds of MB, and cfgmaker has no
+  interface cap.
+- **Logs:**
+  - a 4 MB log of blank lines expands to about 170 MB in memory;
+  - a log with a future time, or a 198-digit token, freezes its target;
+  - duplicate timestamps write `i64::MIN` rates.
+- **Alerts:**
+  - mail text is not redacted as the webhook body is;
+  - plain SMTP and `http://` webhooks pass without a warning;
+  - webhooks carry no delivery ID;
+  - the manual's Python verifier can raise on malformed headers;
+  - proxy variables apply to the webhook client.
+- **Files and processes:**
+  - the PID file is read by path as root;
+  - the `Directory[]` symlink check races with its use;
+  - Include has no fan-out limit, resolves relative names against the working directory first,
+    and blocks on a FIFO;
+  - `ThreshProg*` is checked against the working directory but run through `PATH`;
+  - threshold programs have no process group;
+  - `O_NONBLOCK` is hard-coded in `rate` for some architectures.
+- **The UI:**
+  - it shows `config_path` and the version;
+  - API answers have no `Cache-Control`;
+  - unknown `/api/*` paths return the UI's page with 200.
+- **npm:** 10 advisories in build tools only (PostCSS, Vite, Tailwind 3's helpers); the shipped
+  bundle has none. The full fix is Tailwind 4.
+
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
@@ -173,3 +257,7 @@ Found while writing it:
   gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
+- The snmp2 SNMPv3 issue (state changed before authentication): report it to its maintainer
+  privately, patch a fork, or replace the library. LinkScope works around it by reopening the
+  session.
+- The low findings above: before the repository goes public, or after.
