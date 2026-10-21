@@ -17,7 +17,9 @@ path = "src/main.rs"
 linkscope-rate = { path = "../rate" }
 linkscope-config = { path = "../config" }
 linkscope-web = { path = "../web" }
-snmp2 = { version = "0.5", default-features = false, features = ["tokio", "crypto-rust", "heap_buffers"] }
+# SNMP (replaced snmp2 in 2026-10: it changed v3 session state before authenticating a reply).
+# Pinned: a pre-1.0 library on the security path is updated deliberately, after reading the change.
+async-snmp = { version = "=0.18.1", default-features = false, features = ["crypto-rustcrypto"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 bigdecimal = "0.4"

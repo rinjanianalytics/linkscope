@@ -163,7 +163,11 @@ tetap berada di bawah direktori log.
 LinkScope ditulis dalam Rust, tanpa kode `unsafe` di parser konfigurasi, evaluator ekspresi, atau
 mesin perhitungan laju (mesin ini melarangnya). Nilai yang terlalu panjang atau rusak ditolak
 alih-alih meluap dari buffer. Mesin perhitungan laju diuji dengan 2.000 log yang dirusak secara acak.
-Paket SNMP didekode oleh pustaka `snmp2`, yang tidak di-fuzz oleh proyek ini.
+Paket SNMP dienkode, didekode, dan diautentikasi oleh pustaka `async-snmp` (sejak 2026-10,
+menggantikan `snmp2`, yang mengubah status sesi v3 dari sebuah balasan sebelum mengautentikasinya).
+Pustaka ini memverifikasi balasan SNMPv3 sebelum mengubah apa pun, membandingkan tanda tangan dalam
+waktu konstan, dan melarang kode `unsafe` di kliennya. LinkScope menyematkan versinya dan hanya
+menerima balasan dari alamat yang di-poll.
 
 ## Menjalankan LinkScope dengan aman
 

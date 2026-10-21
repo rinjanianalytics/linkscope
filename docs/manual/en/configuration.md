@@ -189,9 +189,9 @@ SnmpOptions[edge-v3]: username => 'linkscope', authprotocol => 'sha256',
 |---|---|
 | `username` | Required for version 3 |
 | `authprotocol` | `md5` (default), `sha` (or `sha1`), `sha224`, `sha256`, `sha384`, `sha512` |
-| `authpassword` | Without it, the target uses noAuthNoPriv |
-| `privprotocol` | `des` (default), `aes` (or `aes128`), `aes192`, `aes256` |
-| `privpassword` | With `authpassword`, the target uses authPriv; without it, authNoPriv |
+| `authpassword` | Without it, the target uses noAuthNoPriv. At least 8 characters, as USM requires |
+| `privprotocol` | `des` (default), `aes` (or `aes128`), `aes192`, `aes256` (keys extended as net-snmp does), `aes192c`, `aes256c` (as Cisco does) |
+| `privpassword` | With `authpassword`, the target uses authPriv; without it, authNoPriv. At least 8 characters |
 | `contextname` | The SNMP context |
 
 Prefer authPriv with SHA-2 and AES. Localized keys (`authkey`, `privkey`) are not supported; use
