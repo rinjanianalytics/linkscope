@@ -19,7 +19,8 @@ export interface Summary {
   cycles: number
   last_cycle: { started: number; duration_ms: number; targets: number; ok: number; failed: number } | null
   interval_secs: number
-  config_path: string
+  /** The configuration's file name (not its path). */
+  config_name: string
   warnings: string[]
   targets_total: number
   targets_ok: number
