@@ -174,6 +174,33 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 const enc = encodeURIComponent
 
+/** The manual (`/api/docs`): its pages are Markdown rendered and sanitized by the server. */
+export interface DocRef {
+  slug: string
+  title: string
+}
+
+export interface DocLanguage {
+  code: string
+  name: string
+  title: string
+  pages: DocRef[]
+}
+
+export interface DocsIndex {
+  languages: DocLanguage[]
+}
+
+export interface DocPage {
+  lang: string
+  slug: string
+  title: string
+  html: SanitizedHtml
+  headings: { level: number; id: string; text: string }[]
+  prev: DocRef | null
+  next: DocRef | null
+}
+
 export const api = {
   summary: (signal?: AbortSignal) => getJson<Summary>('/api/summary', signal),
   targets: (signal?: AbortSignal) => getJson<TargetSummary[]>('/api/targets', signal),
@@ -183,6 +210,8 @@ export const api = {
       `/api/targets/${enc(name)}/series?period=${period}${maxx ? `&maxx=${Math.round(maxx)}` : ''}`,
       signal,
     ),
+  docs: (signal?: AbortSignal) => getJson<DocsIndex>('/api/docs', signal),
+  docPage: (lang: string, slug: string, signal?: AbortSignal) => getJson<DocPage>(`/api/docs/${enc(lang)}/${enc(slug)}`, signal),
 }
 
 export const targetHref = (name: string) => `/target/${enc(name)}`
