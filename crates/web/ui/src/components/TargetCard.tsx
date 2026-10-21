@@ -40,7 +40,7 @@ function TargetCardImpl({ target }: { target: TargetSummary }) {
         <h3 className="line-clamp-2 text-base font-semibold leading-snug tracking-tight">
           <Link
             href={targetHref(target.name)}
-            className="rounded-sm outline-none after:absolute after:inset-0 after:rounded-card focus-visible:after:ring-2 focus-visible:after:ring-ring"
+            className="rounded-sm outline-hidden after:absolute after:inset-0 after:rounded-card focus-visible:after:ring-2 focus-visible:after:ring-ring"
           >
             <HtmlContent inline html={target.title_html} />
           </Link>

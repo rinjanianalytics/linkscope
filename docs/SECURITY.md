@@ -76,3 +76,6 @@ alerts), with `cargo audit` and `npm audit`. Fixed:
 | A timed-out threshold program's children survived | the program | its own process group, killed as a group |
 | An unusable `ThreshDir` state file fired on every poll, or a planted one suppressed an alert | a `ThreshDir` writer | an error in the log; the change is remembered in memory, once per change |
 | A reload waited up to ten minutes for threshold actions, deaf to signals | a slow receiver | the new engine adopts them; on stop, ten seconds, or a second signal |
+| The summary gave the configuration's full path to a UI without a login | anyone who reaches the UI | its file name only (`config_name`) |
+| API and metrics answers carried no `Cache-Control`; unknown `/api/*` paths and any method got the UI's page with 200 | a shared proxy, scanners | `no-store` on live data, 404 for unknown API paths, 405 for anything but GET and HEAD, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin` |
+| The UI's build tools had 10 advisories (PostCSS, Vite 5, Tailwind 3's file watching); none in the shipped bundle | a developer's machine | Vite 8, Tailwind 4: `npm audit` finds none |

@@ -168,7 +168,7 @@ export function Overview({ summary, targets }: OverviewProps) {
               <span aria-hidden>·</span>
               <span>{formatCountOf(s.cycles, 'poll cycle')}</span>
               <span aria-hidden>·</span>
-              <span className="break-all font-mono text-xs">{s.config_path}</span>
+              <span className="break-all font-mono text-xs">{s.config_name}</span>
             </span>
           ) : (
             <Skeleton className="h-4 w-64" />
@@ -200,7 +200,7 @@ export function Overview({ summary, targets }: OverviewProps) {
           <AlertDescription>
             <ul className="mt-2 grid gap-1">
               {s.warnings.map((w, i) => (
-                <li key={i} className="break-words">
+                <li key={i} className="wrap-break-word">
                   {w}
                 </li>
               ))}

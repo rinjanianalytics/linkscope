@@ -56,7 +56,7 @@ const ChartContainer = React.forwardRef<
           '[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-chart-grid',
           '[&_.recharts-cartesian-axis-line]:stroke-border [&_.recharts-cartesian-axis-tick-line]:stroke-border',
           '[&_.recharts-curve.recharts-tooltip-cursor]:stroke-muted-foreground/40',
-          '[&_.recharts-layer]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-sector]:outline-none',
+          '[&_.recharts-layer]:outline-hidden [&_.recharts-surface]:outline-hidden [&_.recharts-sector]:outline-hidden',
           className,
         )}
         {...props}
@@ -76,10 +76,10 @@ function Swatch({ indicator, colorVar }: { indicator?: 'area' | 'line' | 'dashed
       aria-hidden
       className={cn(
         'shrink-0',
-        indicator === 'area' && 'size-2.5 rounded-sm bg-[--swatch]',
-        indicator === 'line' && 'h-0.5 w-3 rounded-pill bg-[--swatch]',
-        indicator === 'dashed' && 'h-0 w-3 border-t-2 border-dashed border-[--swatch]',
-        !indicator && 'size-2.5 rounded-pill bg-[--swatch]',
+        indicator === 'area' && 'size-2.5 rounded-sm bg-(--swatch)',
+        indicator === 'line' && 'h-0.5 w-3 rounded-pill bg-(--swatch)',
+        indicator === 'dashed' && 'h-0 w-3 border-t-2 border-dashed border-(--swatch)',
+        !indicator && 'size-2.5 rounded-pill bg-(--swatch)',
       )}
       style={{ '--swatch': colorVar } as React.CSSProperties}
     />
@@ -118,7 +118,7 @@ function ChartTooltipContent({
   return (
     <div
       className={cn(
-        'grid min-w-[10rem] gap-1.5 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-pop',
+        'grid min-w-40 gap-1.5 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-pop',
         className,
       )}
     >

@@ -46,7 +46,7 @@ yang aman: struktur dan format teks, serta tautan hanya ke `http` dan `https`.
   "cycles": 12,
   "last_cycle": { "started": 1760943300, "duration_ms": 412, "targets": 24, "ok": 23, "failed": 1, "write_failures": 0 },
   "interval_secs": 300,
-  "config_path": "/etc/mrtg/mrtg.cfg",
+  "config_name": "mrtg.cfg",
   "warnings": [],
   "targets_total": 24,
   "targets_ok": 22,
@@ -66,7 +66,7 @@ yang aman: struktur dan format teks, serta tautan hanya ke `http` dan `https`.
 | `cycles` | number | Siklus polling yang selesai. |
 | `last_cycle` | object atau null | Siklus terakhir: `started`, `duration_ms`, `targets`, `ok`, `failed`, `write_failures` (log yang tidak terbaca atau tertulis). Null sebelum siklus pertama. |
 | `interval_secs` | number | Detik antar siklus. |
-| `config_path` | string | File konfigurasi. |
+| `config_name` | string | Nama berkas konfigurasi (bukan path-nya, yang tidak ditampilkan antarmuka). |
 | `warnings` | array of string | Peringatan saat memuat konfigurasi. |
 | `targets_total` | number | Jumlah target yang dikonfigurasi. |
 | `targets_ok` | number | Target dengan status `ok`. |

@@ -21,7 +21,7 @@ export function PageHeader({ label, labelIcon, meta, title, description, actions
           <SectionLabel icon={labelIcon}>{label}</SectionLabel>
           {meta}
         </div>
-        <h1 className="text-display break-words">{title}</h1>
+        <h1 className="text-display wrap-break-word">{title}</h1>
         {description && <div className="text-sm text-muted-foreground">{description}</div>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
