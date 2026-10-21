@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Checks every push to main and every pull request: clippy and the tests on the Rust the image
+# builds with, and a build on the oldest Rust LinkScope supports (rust-version in Cargo.toml).
+# The release workflow runs it too before it publishes anything.
+#
+# Actions are pinned by commit; the comment names the release.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # The Dockerfile's rust image; change both together.
+  RUST_VERSION: "1.92.0"
+  # Cargo.toml's rust-version.
+  RUST_MSRV: "1.88"
+
+jobs:
+  test:
+    name: Clippy and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust ${{ env.RUST_VERSION }}
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component clippy
+          rustup default "$RUST_VERSION"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-test-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-test-${{ runner.os }}-${{ env.RUST_VERSION }}-
+      - name: Clippy
+        run: >-
+          cargo clippy --locked --all-targets --no-deps
+          -p linkscope-config -p linkscope-rate -p linkscope-web -p linkscope
+          -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+
+  msrv:
+    name: Build on the oldest supported Rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust ${{ env.RUST_MSRV }}
+        run: |
+          rustup toolchain install "$RUST_MSRV" --profile minimal
+          rustup default "$RUST_MSRV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-msrv-${{ runner.os }}-${{ env.RUST_MSRV }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-msrv-${{ runner.os }}-${{ env.RUST_MSRV }}-
+      - name: Build
+        run: cargo build --workspace --locked
