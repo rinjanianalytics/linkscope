@@ -8,4 +8,13 @@ fn main() {
         }
     }
     println!("cargo:rerun-if-changed=ui/dist/index.html");
+    // The manual (crate::docs) is embedded too.
+    println!("cargo:rerun-if-changed=../../docs/manual");
+    for lang in ["en", "id"] {
+        if let Ok(entries) = std::fs::read_dir(format!("../../docs/manual/{lang}")) {
+            for e in entries.flatten() {
+                println!("cargo:rerun-if-changed={}", e.path().display());
+            }
+        }
+    }
 }

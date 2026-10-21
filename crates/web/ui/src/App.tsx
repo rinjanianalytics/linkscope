@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Overview } from '@/pages/Overview'
 import { TargetPage } from '@/pages/TargetPage'
+import { DocsHome, DocsPage } from '@/pages/Docs'
 import { NotFound } from '@/pages/NotFound'
 import { api } from '@/lib/api'
 import { usePolling } from '@/lib/hooks'
@@ -44,6 +45,11 @@ export default function App() {
               <Overview summary={summary} targets={targets} />
             </Route>
             <Route path="/target/:name">{(params) => <TargetPage name={decode(params.name)} />}</Route>
+            <Route path="/docs">
+              <DocsHome />
+            </Route>
+            <Route path="/docs/:lang">{(params) => <DocsHome lang={decode(params.lang)} />}</Route>
+            <Route path="/docs/:lang/:slug">{(params) => <DocsPage lang={decode(params.lang)} slug={decode(params.slug)} />}</Route>
             <Route>
               <NotFound />
             </Route>
