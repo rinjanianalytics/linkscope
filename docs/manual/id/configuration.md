@@ -193,9 +193,9 @@ SnmpOptions[edge-v3]: username => 'linkscope', authprotocol => 'sha256',
 |---|---|
 | `username` | Wajib untuk versi 3 |
 | `authprotocol` | `md5` (default), `sha` (atau `sha1`), `sha224`, `sha256`, `sha384`, `sha512` |
-| `authpassword` | Tanpa ini, target memakai noAuthNoPriv |
-| `privprotocol` | `des` (default), `aes` (atau `aes128`), `aes192`, `aes256` |
-| `privpassword` | Bersama `authpassword`, target memakai authPriv; tanpanya, authNoPriv |
+| `authpassword` | Tanpa ini, target memakai noAuthNoPriv. Paling sedikit 8 karakter, sesuai syarat USM |
+| `privprotocol` | `des` (default), `aes` (atau `aes128`), `aes192`, `aes256` (kunci diperpanjang seperti net-snmp), `aes192c`, `aes256c` (seperti Cisco) |
+| `privpassword` | Bersama `authpassword`, target memakai authPriv; tanpanya, authNoPriv. Paling sedikit 8 karakter |
 | `contextname` | Konteks SNMP |
 
 Utamakan authPriv dengan SHA-2 dan AES. Kunci terlokalisasi (`authkey`, `privkey`) tidak didukung;

@@ -234,9 +234,16 @@ configuration reading, the web UI and its build tools (Vite 8, Tailwind 4, `npm 
       connection attack again at most 268 descriptors with `/healthz` in 5.2 s. The UI after
       Vite 8 and Tailwind 4 matches the old one in Chrome 154 (light, dark, desktop, phone).
 
+The SNMP library (2026-10-21: replace snmp2): replaced by `async-snmp` 0.18.1, pinned, client
+features only. It authenticates an SNMPv3 reply before changing session state, compares HMACs in
+constant time and denies `unsafe` code in its client; `strict_source` keeps replies from other
+addresses out. Checked against net-snmp 5.9.4: the v3 tests (SHA and AES, MD5, SHA-256 and AES, a
+wrong password, a wrong community) pass, and cfgmaker over v1, v2c, v3 authPriv and v3 authNoPriv
+writes byte-identical configs with the old and the new library (49 interfaces each); a cycle polls
+the lab's CHR (v2c) with counters matching the lab's own. AES-192 and AES-256 now work (with
+`aes192c`, `aes256c` for Cisco's key extension); v3 passwords must have 8 characters.
+
 Still open, by choice or for later:
-- snmp2's own internals (a zero-length INTEGER shift, engine-time overflow, a non-constant-time
-  HMAC): the open decision below.
 - The version stays in the UI and `linkscope_info`: useful for monitoring, little to hide in an
   open program.
 - `create_dirs` is not fully race-free between levels (it would need `mkdirat`); without `/proc`
@@ -250,6 +257,3 @@ Still open, by choice or for later:
   gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
-- The snmp2 SNMPv3 issue (state changed before authentication): report it to its maintainer
-  privately, patch a fork, or replace the library. LinkScope works around it by reopening the
-  session.

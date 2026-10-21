@@ -155,7 +155,11 @@ stays under the log directory.
 LinkScope is written in Rust, with no `unsafe` code in the configuration parser, the expression
 evaluator or the rate engine (the rate engine forbids it). Values that are too long or malformed
 are rejected instead of overflowing a buffer. The rate engine is tested against 2,000 randomly
-corrupted logs. SNMP packets are decoded by the `snmp2` library, which this project does not fuzz.
+corrupted logs. SNMP packets are encoded, decoded and authenticated by the `async-snmp` library (since 2026-10, in
+place of `snmp2`, which changed a v3 session's state before authenticating a reply). It verifies
+an SNMPv3 reply before it changes anything, compares signatures in constant time and forbids
+`unsafe` code in its client. LinkScope pins its version and accepts replies only from the polled
+address.
 
 ## Running LinkScope safely
 
