@@ -1,0 +1,44 @@
+name: Bug
+description: LinkScope does something wrong or differently from MRTG.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Leave out communities, SNMPv3 passwords, webhook secrets and anything
+        else secret**, and real addresses if you prefer (192.0.2.1 is fine). A security problem goes
+        to the private report instead (see the links when you open an issue).
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `linkscope --version`, or the image tag.
+      placeholder: linkscope 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed as
+      options: [Docker image, Built from source, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: If MRTG 2.17.10 behaves differently with the same configuration, say how.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The configuration involved
+      description: The global lines and the target(s) concerned, with secrets removed.
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: What LinkScope printed around the time (journalctl or docker logs).
+      render: text

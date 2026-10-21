@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/rinjanianalytics/linkscope/security/advisories/new
+    about: Privately, to the maintainers only. Please do not open a public issue for it.
+  - name: The manual
+    url: https://github.com/rinjanianalytics/linkscope/tree/main/docs/manual/en
+    about: Install, configuration, alerts, the API and troubleshooting (also at /docs in a running LinkScope).

@@ -42,6 +42,30 @@ jobs:
       - name: Formatting
         run: cargo fmt --all --check
 
+  ui:
+    name: UI build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      # The committed dist must be what the sources and the lock file build: an npm update or a UI
+      # change without a rebuild fails here.
+      - name: Build the UI and compare it with the committed dist
+        working-directory: crates/web/ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          if ! git diff --quiet --exit-code -- dist || [ -n "$(git status --porcelain -- dist)" ]; then
+            git status --short -- dist
+            echo "::error::crates/web/ui/dist is not what the sources build; run npm ci && npm run build in crates/web/ui and commit dist"
+            exit 1
+          fi
+
   test:
     name: Clippy and tests
     runs-on: ubuntu-24.04
