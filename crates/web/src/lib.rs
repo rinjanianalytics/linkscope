@@ -92,6 +92,16 @@ pub async fn serve(addr: SocketAddr, state: SharedState) -> std::io::Result<()> 
     serve_listener(tokio::net::TcpListener::bind(addr).await?, state).await
 }
 
+/// Connections served at once. More wait in the kernel's accept queue and hold none of the
+/// daemon's file descriptors: the poller needs those for its sockets and logs, and a client
+/// holding connections open must not starve it (without a cap, about 1,100 half-sent requests
+/// used every descriptor and the next cycle polled nothing, 2026-10-21).
+pub const MAX_CONNECTIONS: usize = 256;
+/// A request's headers must arrive within this.
+pub const HEADER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// A connection, however it is used, is closed after this; the UI simply reconnects.
+pub const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// Serve on an already bound listener (bound before privileges are dropped).
 pub async fn serve_listener(listener: tokio::net::TcpListener, state: SharedState) -> std::io::Result<()> {
     let addr = listener.local_addr()?;
@@ -99,5 +109,26 @@ pub async fn serve_listener(listener: tokio::net::TcpListener, state: SharedStat
     if !addr.ip().is_loopback() {
         tracing::warn!("web UI is listening on {addr}, which is reachable from the network; it has no login, so put it behind a reverse proxy with authentication if needed");
     }
-    axum::serve(listener, router(state)).await
+    let app = router(state);
+    let permits = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONNECTIONS));
+    loop {
+        // A permit first, then accept: past the cap, clients wait in the kernel's queue.
+        let Ok(permit) = permits.clone().acquire_owned().await else { return Ok(()) };
+        let socket = match listener.accept().await {
+            Ok((socket, _)) => socket,
+            Err(e) => {
+                tracing::warn!("web UI: accept failed: {e}");
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                continue;
+            }
+        };
+        let service = hyper_util::service::TowerToHyperService::new(app.clone());
+        tokio::spawn(async move {
+            let mut builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+            builder.http1().timer(hyper_util::rt::TokioTimer::new()).header_read_timeout(HEADER_TIMEOUT);
+            let conn = builder.serve_connection(hyper_util::rt::TokioIo::new(socket), service);
+            let _ = tokio::time::timeout(CONNECTION_TIMEOUT, conn).await;
+            drop(permit);
+        });
+    }
 }

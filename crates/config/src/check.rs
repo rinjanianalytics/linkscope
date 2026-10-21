@@ -579,7 +579,7 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         }
 
         // ---- the Target expression
-        let ipv4only = !(enable_ipv6 && !get("ipv4only").is_some_and(|v| v.eq_ignore_ascii_case("yes")));
+        let ipv4only = !enable_ipv6 || get("ipv4only").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
         let nohc = get("nohc").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
         let target_text = get("target");
         let (rewritten, expr, unique_source) = match &target_text {
