@@ -53,10 +53,12 @@ Directory[_]: routers
 
 ### Include
 
-`Include: file` reads another file at that point. A relative path is tried as given, then
-relative to the directory of the main configuration file. A path with `*` is a glob; LinkScope
-reads the matching files in sorted order (MRTG read them in reverse order). Includes may nest
-16 levels deep, and a file that includes itself is an error.
+`Include: file` reads another file at that point. A relative path is relative to the directory
+of the main configuration file (MRTG tried the working directory first, so where it was started
+decided which file was read). A path with `*` is a glob; LinkScope reads the matching files in
+sorted order (MRTG read them in reverse order). Includes may nest 16 levels deep, a file that
+includes itself is an error, and one configuration reads at most 1,000 files and 64 MB in all.
+An included file must be a regular file: a FIFO or a device is refused.
 
 ### Trusted files
 

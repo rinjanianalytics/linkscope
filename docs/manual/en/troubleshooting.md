@@ -128,6 +128,13 @@ In daemon mode, a PID file that names a running process stops a second
 daemon in the same way (`LinkScope is already running with pid ...`). A PID
 file left by a process that has exited is replaced.
 
+## A log was set aside as `.future`
+
+`the log's last update ... is more than a day ahead of now; set aside as <name>.future` means the
+log claimed an update more than a day in the future, usually after the clock was wrong. MRTG would
+refuse to update it until that time came. LinkScope keeps the old log as `<name>.future` and
+starts a new one. If the history matters, fix the clock, stop LinkScope and move the file back.
+
 ## Logs cannot be written
 
 ```text

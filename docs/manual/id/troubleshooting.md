@@ -137,6 +137,14 @@ mencegah daemon kedua dengan cara yang sama
 (`LinkScope is already running with pid ...`). Berkas PID yang ditinggalkan
 proses yang sudah keluar akan diganti.
 
+## Log disisihkan sebagai `.future`
+
+`the log's last update ... is more than a day ahead of now; set aside as <name>.future` berarti log
+mencatat pembaruan lebih dari sehari di masa depan, biasanya setelah jam sistem salah. MRTG akan
+menolak memperbaruinya sampai waktu itu tiba. LinkScope menyimpan log lama sebagai `<name>.future`
+dan memulai log baru. Jika riwayatnya penting, perbaiki jam, hentikan LinkScope, lalu pindahkan
+berkas itu kembali.
+
 ## Log tidak dapat ditulis
 
 ```text

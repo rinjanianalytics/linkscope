@@ -163,10 +163,12 @@ fn run(mut args: Args) -> Result<ExitCode> {
         }
     }
     let daemon_mode = args.daemon || cfg.global.run_as_daemon;
-    let pid_path = args.pid_file.clone().unwrap_or_else(|| args.config.with_extension("pid"));
-    let mut pid = if daemon_mode { Some(daemon::PidFile::create(&pid_path, ids)?) } else { None };
+    // The lock first: it is what tells a running instance apart, so a PID file found after it is
+    // taken is stale and is never read (see PidFile::create).
     let lock_path = args.lock_file.clone().unwrap_or_else(|| PathBuf::from(format!("{}_l", args.config.display())));
     let _lock = daemon::acquire_lock(&lock_path)?;
+    let pid_path = args.pid_file.clone().unwrap_or_else(|| args.config.with_extension("pid"));
+    let mut pid = if daemon_mode { Some(daemon::PidFile::create(&pid_path, ids)?) } else { None };
     let listen = args.listen.clone().or_else(|| cfg.global.web_listen.clone());
     let listener = match &listen {
         Some(addr) => {

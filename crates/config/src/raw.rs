@@ -15,7 +15,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
@@ -28,6 +28,17 @@ use crate::ConfigError;
 
 /// Maximum nesting depth of `Include:` directives.
 pub const MAX_INCLUDE_DEPTH: usize = 16;
+/// Files one configuration may read in all, Includes counted. Depth alone left the same file
+/// includable again and again at every level: 16 levels of N each read N^16 files.
+pub const MAX_CONFIG_FILES: usize = 1000;
+/// Bytes one configuration may read in all.
+pub const MAX_CONFIG_BYTES: u64 = 64 * 1024 * 1024;
+
+/// What is left to read of [`MAX_CONFIG_FILES`] and [`MAX_CONFIG_BYTES`].
+struct Budget {
+    files: usize,
+    bytes: u64,
+}
 
 /// The result of reading a configuration file, before semantic checks.
 ///
@@ -101,14 +112,30 @@ impl Patterns {
     }
 }
 
-fn load_lines(path: &Path, opts: &ReadOptions) -> Result<Vec<String>, ConfigError> {
-    let f = fs::File::open(path).map_err(|e| ConfigError::Io {
+fn load_lines(path: &Path, opts: &ReadOptions, budget: &mut Budget) -> Result<Vec<String>, ConfigError> {
+    use std::os::unix::fs::OpenOptionsExt;
+    if budget.files == 0 {
+        return Err(ConfigError::at(path, 0, format!("more than {MAX_CONFIG_FILES} configuration files read in all (Include)")));
+    }
+    budget.files -= 1;
+    // Not blocking, and regular files only: a FIFO or a device named by an Include hung the
+    // reader or streamed forever.
+    let f = fs::OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK | libc::O_CLOEXEC).open(path).map_err(|e| ConfigError::Io {
         path: path.to_path_buf(),
         source: e,
     })?;
     check_file_trust(path, &f, opts.trust)?;
+    if !f.metadata().is_ok_and(|m| m.is_file()) {
+        return Err(ConfigError::at(path, 0, "not a regular file"));
+    }
+    let mut data = Vec::new();
+    f.take(budget.bytes.saturating_add(1)).read_to_end(&mut data).map_err(|e| ConfigError::Io { path: path.to_path_buf(), source: e })?;
+    if data.len() as u64 > budget.bytes {
+        return Err(ConfigError::at(path, 0, format!("more than {} MB of configuration read in all (Include)", MAX_CONFIG_BYTES >> 20)));
+    }
+    budget.bytes -= data.len() as u64;
     let mut out = Vec::new();
-    for line in BufReader::new(f).split(b'\n') {
+    for line in BufReader::new(&data[..]).split(b'\n') {
         let line = line.map_err(|e| ConfigError::Io {
             path: path.to_path_buf(),
             source: e,
@@ -128,8 +155,9 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
     };
     let top_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
 
+    let mut budget = Budget { files: MAX_CONFIG_FILES, bytes: MAX_CONFIG_BYTES };
     let mut stack: Vec<Source> = vec![Source {
-        lines: load_lines(path, opts)?.into_iter(),
+        lines: load_lines(path, opts, &mut budget)?.into_iter(),
         file: path.to_path_buf(),
         line_no: 0,
     }];
@@ -165,17 +193,14 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
         if let Some(c) = pat.include.captures(&line) {
             let spec = c[1].to_string();
             let mut files: Vec<PathBuf> = Vec::new();
+            // A relative name is relative to the top configuration's directory, MRTG's own
+            // fallback. MRTG tried the working directory first, so where the daemon was started
+            // decided which file was read; that is no longer the case.
+            let spec_path = if Path::new(&spec).is_absolute() { PathBuf::from(&spec) } else { top_dir.join(&spec) };
             if spec.contains('*') {
-                files = glob_sorted(&spec);
-                if files.is_empty() {
-                    files = glob_sorted(&top_dir.join(&spec).to_string_lossy());
-                }
+                files = glob_sorted(&spec_path.to_string_lossy());
             } else {
-                let mut p = PathBuf::from(&spec);
-                if fs::metadata(&p).is_err() {
-                    p = top_dir.join(&spec);
-                }
-                files.push(p);
+                files.push(spec_path);
             }
             if stack.len() + 1 > MAX_INCLUDE_DEPTH {
                 return Err(ConfigError::at(&file, line_no, format!(
@@ -190,7 +215,7 @@ pub fn read_config(path: &Path, opts: &ReadOptions) -> Result<RawConfig, ConfigE
                         "Include cycle: {} includes itself", f.display()
                     )));
                 }
-                let lines = load_lines(&f, opts).map_err(|e| match e {
+                let lines = load_lines(&f, opts, &mut budget).map_err(|e| match e {
                     ConfigError::Io { path, .. } => ConfigError::at(&file, line_no, format!(
                         "unable to open include file: {}", path.display()
                     )),
