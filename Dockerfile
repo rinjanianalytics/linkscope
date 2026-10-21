@@ -8,7 +8,7 @@
 # One Dockerfile for amd64 and arm64. Rust always runs on the build machine's own architecture and
 # cross-compiles when the target differs; the final stage only copies files, so an image for the
 # other architecture needs no emulation:
-#   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:0.1.0 .
+#   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:0.2.0 .
 
 FROM --platform=$BUILDPLATFORM rust:1.92.0-slim-bookworm AS build
 ARG TARGETARCH
