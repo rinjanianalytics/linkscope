@@ -1,0 +1,15 @@
+# Panduan LinkScope
+
+- [Pengantar](introduction.md)
+- [Instalasi dan menjalankan](install.md)
+- [Pindah dari MRTG](migrating-from-mrtg.md)
+- [Baris perintah](command-line.md)
+- [Konfigurasi](configuration.md)
+- [cfgmaker](cfgmaker.md)
+- [Antarmuka web](web-ui.md)
+- [Metrik Prometheus](metrics.md)
+- [Peringatan](alerts.md)
+- [API JSON](api.md)
+- [Keamanan](security.md)
+- [Kompatibilitas dengan MRTG](compatibility.md)
+- [Pemecahan masalah](troubleshooting.md)

@@ -1,0 +1,133 @@
+# Security
+
+MRTG treats its configuration as code and trusts what devices send it. LinkScope keeps the same
+configuration format but closes those gaps. This page explains how, and how to run LinkScope
+safely.
+
+## The configuration is data
+
+In MRTG, `Target[]` is run as Perl, `SnmpOptions` and `ConversionCode` are evaluated, and
+backtick targets run through `/bin/sh`. Anyone who can write the configuration, or any file it
+includes, can run code as the MRTG account.
+
+In LinkScope:
+
+- Target expressions compile to an arithmetic tree. Nothing is run as code.
+- `SnmpOptions` is parsed as data.
+- Conversion code is not supported.
+- External commands run without a shell, unless you set `ExecShell: yes`.
+- Configuration files that other accounts can change are refused (see below).
+
+`ExecShell: yes` only decides whether LinkScope itself reads shell syntax. It is not a sandbox.
+Anyone who can edit the configuration can still run programs as the service account (external
+commands, threshold programs). That is why the files themselves are checked.
+
+### Trusted configuration files
+
+Every configuration file, including each included file, must be owned by root or by the account
+that runs LinkScope. Neither the file nor its directory may be writable by group or others (a
+sticky directory is fine). LinkScope checks the file it actually opened, not just the name.
+`--allow-insecure-config` loads such a file with a warning instead.
+
+## Credentials stay out of every output
+
+The configuration holds SNMP communities, SNMPv3 passwords, a webhook URL that may carry a token,
+the webhook's signing secret and the mail password. None of them leave LinkScope:
+
+- Every string the JSON API returns (errors, warnings, Target text) passes through one step that
+  removes all configured communities, SNMPv3 passwords and external command lines. Runtime
+  errors name the target, not its Target text.
+- Credentials are left out when settings are serialized.
+- The webhook URL, its secret and the mail password never appear in the UI, the API, `/metrics`,
+  webhooks or error messages.
+- A test plants secrets in a configuration and searches every endpoint's output for them.
+
+## The web UI
+
+- The UI shows device data (sysName, uptime, router names) as text, so a device cannot inject
+  HTML or scripts.
+- HTML from the configuration (`PageTop`, `Title`, legends) is reduced to a list of allowed
+  tags, without scripts, styles or event handlers.
+- Every response carries a strict Content-Security-Policy (scripts only from LinkScope itself,
+  no framing, no inline scripts), `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  no-referrer` and `X-Frame-Options: DENY`.
+- The UI is read-only and has **no login**. There is no web listener until you set `WebListen`
+  or `--listen`. Bind it to loopback or a trusted management network, and put a reverse proxy
+  with authentication in front of it before you expose it further.
+
+## Devices are not trusted
+
+### cfgmaker
+
+MRTG's cfgmaker wrote sysName into `Title[]` as it came, and newlines or backticks in device
+strings ended up in the generated configuration. LinkScope's cfgmaker:
+
+- removes control characters from every device string;
+- falls back to the ifIndex for interface references that cannot be written safely;
+- escapes values that end up in HTML, sysName included.
+
+A test feeds hostile strings through cfgmaker and parses the result.
+
+### SNMP replies
+
+Replies are accepted only from the address that was polled (a connected UDP socket), and only
+with the right request id and community. SNMPv3 authPriv (SHA-1 or SHA-2 with AES or DES) is
+supported and recommended.
+
+### Hostile or slow agents
+
+- Each agent has a time budget per cycle (80 % of `Interval`).
+- Table walks are limited by time, rows and bytes.
+- Numbers longer than 64 characters are rejected.
+- A stuck agent delays the cycle by at most its budget and cannot block the others.
+- A failure in one target is contained to that target.
+
+## Files
+
+MRTG followed symlinks as root (when changing directory owners with `--fhs`, and for the pid
+file before a later fix). LinkScope:
+
+- opens directories with `O_DIRECTORY|O_NOFOLLOW` and changes their owner with `fchown`;
+- creates the pid file with `O_EXCL|O_NOFOLLOW`;
+- writes every output file (logs, cache, threshold state) to a new temporary file with an
+  unpredictable name, created `O_EXCL|O_NOFOLLOW`, then renames it into place;
+- refuses `Directory[]` subdirectories that are symlinks;
+- reads logs with `O_NOFOLLOW|O_NONBLOCK`, only if they are regular files, and at most 4 MB, so a
+  FIFO or a device in place of a log cannot hang or exhaust the daemon.
+
+`WorkDir` itself is trusted: keep it writable only by the service account.
+
+### Paths
+
+Target names may not contain path separators. `Directory[]` is reduced to plain relative parts
+(a leading `/` is dropped, as MRTG's string joining treats it, and `..` is rejected), so every log
+stays under the log directory.
+
+## Privileges and locking
+
+- With `--user`, LinkScope calls `setgroups` with only the target group, then `setgid` and
+  `setuid`, and checks both ids and the group list. MRTG kept the supplementary groups and only
+  checked the user id.
+- LinkScope holds an `flock` for its whole life, so the lock is never lost in daemon mode.
+- There are no per-target processes: the rate engine runs inside LinkScope, so a failed fork
+  cannot replace the daemon.
+
+## Memory safety
+
+LinkScope is written in Rust, with no `unsafe` code in the configuration parser, the expression
+evaluator or the rate engine (the rate engine forbids it). Values that are too long or malformed
+are rejected instead of overflowing a buffer. The rate engine is tested against 2,000 randomly
+corrupted logs. SNMP packets are decoded by the `snmp2` library, which this project does not fuzz.
+
+## Running LinkScope safely
+
+- **Run as an unprivileged account**, with `--user mrtg` or with systemd's `User=`. With
+  `--user`, LinkScope reads the configuration, takes the lock and creates the pid file before it
+  drops privileges, then creates the log directories as that account.
+- **Keep `mrtg.cfg` private.** It holds SNMP credentials. Use `chown root:mrtg` and `chmod 640`,
+  so the daemon can read it again on reload after dropping privileges. (`chmod 600` owned by root
+  also works, but then a reload fails and you restart instead.)
+- **Keep `WorkDir` writable only by the service account.**
+- **Prefer SNMPv3 with authPriv**, and let agents answer only the poller's address.
+- **Keep the web listener on a trusted network**, behind a reverse proxy with authentication if
+  anyone else can reach it.

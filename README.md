@@ -19,6 +19,13 @@ affiliated with or endorsed by the MRTG project. See [NOTICE](NOTICE).
 * **Modern.** SNMP v1, v2c and v3 (SHA-2 and AES), and a web UI built into
   the single binary, replacing the static HTML/PNG pages and `indexmaker`.
 
+## Manual
+
+The manual is built into LinkScope: open `/docs` on the web UI (the **Docs** link in the header),
+in English or Bahasa. It always matches the version you run and needs no internet access. Its
+pages are Markdown in [docs/manual](docs/manual) (`en/`, `id/`), in mdBook's layout, so they
+also read well here on GitHub.
+
 ## Quick start
 
 ```sh
@@ -33,10 +40,10 @@ Generate a config the way you did with cfgmaker:
 
 ```sh
 linkscope cfgmaker --global 'WorkDir: /var/lib/mrtg' --ifref=name \
-    --output /etc/mrtg/mrtg.cfg public@router1 public@switch2::::2
+    --output /etc/mrtg/mrtg.cfg public@router1 public@switch2:::::2
 # SNMPv3
 linkscope cfgmaker --username mrtg --authprotocol sha --authpassword '...' \
-    --privprotocol aes --privpassword '...' router1::::3
+    --privprotocol aes --privpassword '...' router1:::::3
 ```
 
 A symlink named `cfgmaker` pointing at `linkscope` also works.
