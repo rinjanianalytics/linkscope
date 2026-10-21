@@ -32,7 +32,8 @@ An error is an HTTP status with a plain-text message:
 The API never returns a secret. SNMP communities in a `Target[]` are masked
 (`2:•••@192.0.2.1`), and SNMPv3 passwords and keys, external command lines, the webhook URL, its
 secret and the mail password are replaced with `•••` wherever they would appear, including in
-error messages. HTML from the config (`Title[]`, `PageTop[]`, `PageFoot[]`, legends) is cleaned to
+error messages. The paths of the threshold programs and the threshold mail address are not
+given either, only whether they are set. HTML from the config (`Title[]`, `PageTop[]`, `PageFoot[]`, legends) is cleaned to
 a safe subset: structure and text formatting, and links to `http` and `https` only.
 
 ## GET /api/summary
@@ -154,7 +155,7 @@ Everything in a `/api/targets` item, plus the target's display settings:
 | `xsize`, `ysize`, `ytics`, `yticsfactor` | number | `XSize[]`, `YSize[]`, `YTics[]`, `YTicsFactor[]`. |
 | `abs_max` | number | `AbsMax[]`. |
 | `timezone` | string or null | `Timezone[]`. |
-| `thresholds` | object | The target's threshold settings: `min_i`, `min_o`, `max_i`, `max_o`, `desc`, `prog_i`, `prog_o`, `prog_ok_i`, `prog_ok_o`, `mail_address`, and `for_polls` (`ThreshFor[]`). Unset ones are null. |
+| `thresholds` | object | The target's threshold settings: `min_i`, `min_o`, `max_i`, `max_o`, `desc` and `for_polls` (`ThreshFor[]`), null when unset; `programs` (boolean: a `ThreshProg*[]` is set) and `mail` (boolean: `ThreshMailAddress[]` is set). Which program and which address are not given. |
 
 ## GET /api/targets/{name}/series
 

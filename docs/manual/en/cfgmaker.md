@@ -86,6 +86,10 @@ Without `--ifref`, interfaces are referred to by ifName where the device reports
 ifIndex otherwise. `--ifref=name` makes the choice explicit. An interface reference that cannot
 be written safely (for example a name with a backtick) falls back to the ifIndex.
 
+This is what MRTG 2.17.10's cfgmaker does too, and what its `--help` says
+(`--ifref=name ... (default)`). MRTG's longer manual page still says the default is `nr`;
+that sentence is out of date. To keep ifIndex references, pass `--ifref=nr`.
+
 Interfaces cfgmaker skips (down, a type it does not graph, a filter that rejected them) are still
 written, commented out, with the reason above them. Remove the `#` to use one anyway.
 

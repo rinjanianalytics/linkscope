@@ -290,7 +290,39 @@ pub struct TargetDetail {
     pub yticsfactor: f64,
     pub abs_max: u64,
     pub timezone: Option<String>,
-    pub thresholds: linkscope_config::Thresholds,
+    pub thresholds: ThresholdView,
+}
+
+/// A target's thresholds as the UI may show them: the bounds and how long they must stay broken,
+/// and whether a program or a mail address is set, never which. The UI has no login, and the
+/// programs' paths and the address are the server's business.
+#[derive(Debug, Clone, Serialize)]
+pub struct ThresholdView {
+    pub min_i: Option<String>,
+    pub min_o: Option<String>,
+    pub max_i: Option<String>,
+    pub max_o: Option<String>,
+    pub desc: Option<String>,
+    pub for_polls: Option<u32>,
+    /// A `ThreshProg*[]` is set.
+    pub programs: bool,
+    /// `ThreshMailAddress[]` is set.
+    pub mail: bool,
+}
+
+impl From<&linkscope_config::Thresholds> for ThresholdView {
+    fn from(t: &linkscope_config::Thresholds) -> Self {
+        ThresholdView {
+            min_i: t.min_i.clone(),
+            min_o: t.min_o.clone(),
+            max_i: t.max_i.clone(),
+            max_o: t.max_o.clone(),
+            desc: t.desc.clone(),
+            for_polls: t.for_polls,
+            programs: [&t.prog_i, &t.prog_o, &t.prog_ok_i, &t.prog_ok_o].iter().any(|p| p.is_some()),
+            mail: t.mail_address.is_some(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -471,7 +503,7 @@ pub async fn target(State(state): State<SharedState>, Path(name): Path<String>) 
         yticsfactor: t.yticsfactor,
         abs_max: t.abs_max,
         timezone: t.timezone.clone(),
-        thresholds: t.thresholds.clone(),
+        thresholds: ThresholdView::from(&t.thresholds),
     }))
 }
 
