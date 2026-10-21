@@ -1,4 +1,8 @@
-@import 'tailwindcss';
+/* Classes come from the sources only. Without source(none), Tailwind also scanned the committed
+   dist, so each build's CSS depended on the previous build's script. */
+@import 'tailwindcss' source(none);
+@source './';
+@source '../index.html';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
