@@ -36,7 +36,7 @@ libc = "0.2"
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "rustls-native-certs", "ring"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 hmac = "0.12"
-sha2 = "0.10"
+sha2 = "0.11"
 
 
 [dev-dependencies]
