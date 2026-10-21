@@ -1,7 +1,89 @@
 # Install and run
 
-LinkScope is a single binary. The web UI is prebuilt and embedded in it, so a
-normal Rust build is all you need.
+LinkScope is a single binary with its web UI embedded. Run it with Docker, or build it from
+source with a normal Rust build.
+
+## Run with Docker
+
+The quickest way: Docker with Compose v2, no Rust toolchain. You need `compose.yaml` from the
+repository and your configuration.
+
+1. Put your configuration beside `compose.yaml` as `mrtg.cfg`, with `WorkDir: /var/lib/linkscope`.
+   An existing MRTG configuration needs only that line changed. Or generate one (cfgmaker prints
+   to standard output):
+
+   ```sh
+   docker compose run --rm -T linkscope cfgmaker --global 'WorkDir: /var/lib/linkscope' \
+       --ifref=name public@192.0.2.1:::::2 > mrtg.cfg
+   ```
+
+2. Let the container read it and no one else. The container runs as uid 10001, and LinkScope
+   loads only a configuration that root or its own account owns:
+
+   ```sh
+   sudo chown root:10001 mrtg.cfg
+   sudo chmod 640 mrtg.cfg
+   ```
+
+3. Start it, and open `http://127.0.0.1:8080/`:
+
+   ```sh
+   docker compose up -d
+   docker compose logs -f
+   ```
+
+Compose pulls the published image, or builds it from the repository when there is none (the first
+build takes several minutes). To build your own: `docker compose build`.
+
+### What the container keeps where
+
+| Path in the container | What | On the host |
+|---|---|---|
+| `/etc/linkscope/mrtg.cfg` | Your configuration, read-only | `./mrtg.cfg` (or `LINKSCOPE_CONFIG`) |
+| `/var/lib/linkscope` | `WorkDir`: the logs, the interface cache, the alert state, the lock and PID files | the `linkscope-data` volume |
+
+The container runs as an unprivileged account with a read-only filesystem, no capabilities and
+`no-new-privileges`. Back up the `linkscope-data` volume as you would MRTG's work directory.
+
+### Docker settings
+
+Docker's own settings may go in a `.env` file beside `compose.yaml` (`.env.example` lists them).
+Every one has a default, so the file is optional. SNMP settings stay in `mrtg.cfg`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LINKSCOPE_LISTEN` | `127.0.0.1:8080` | Where the UI, the JSON API and `/metrics` are published on the host |
+| `LINKSCOPE_CONFIG` | `./mrtg.cfg` | The configuration file on the host |
+| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.1.0` | The image to run |
+| `CARGO_BUILD_JOBS` | `4` | Cargo jobs when the image is built here |
+
+The UI has no login. To open it from your management network, set `LINKSCOPE_LISTEN` to an address
+there (for example `192.0.2.10:8080`) and list the name you open it by in `WebHosts:` (see
+[Web UI](web-ui.md)).
+
+### Reaching your devices
+
+The container polls through Docker's network address translation, so your devices see the Docker
+host's address, exactly as they would see MRTG running on that host: allow that address in their
+SNMP access lists. Devices on another Docker network are not reachable from the container unless
+it joins that network.
+
+### Moving MRTG's history in
+
+To keep the graphs of an existing MRTG install, copy its logs into the volume once, before the
+first start (`/var/www/mrtg` is an example; use your old `WorkDir`):
+
+```sh
+docker compose run --rm --user root -v /var/www/mrtg:/old:ro --entrypoint sh linkscope \
+    -c 'cp -r /old/. /var/lib/linkscope/ && chown -R 10001:10001 /var/lib/linkscope'
+```
+
+### Upgrading
+
+```sh
+docker compose pull
+docker compose up -d
+```
 
 ## Build from source
 
