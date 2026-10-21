@@ -3,12 +3,30 @@
 LinkScope follows [semantic versioning](https://semver.org/); before 1.0, a minor version may change
 behavior, and every such change is listed under "Upgrading".
 
-## Unreleased
+## 0.2.1 (2026-10-21)
+
+Dependency updates and project housekeeping. Nothing changes in how LinkScope behaves or is
+configured: replacing 0.2.0 with 0.2.1 needs no other change.
+
+### Changed
+
+- The image is built with Rust 1.99 (it was 1.92). Building from source still needs Rust 1.89 or
+  newer.
+- The web UI moved to React 19, recharts 3, TypeScript 7 and tailwind-merge 3, with newer Radix,
+  wouter and font packages. It looks and works as before; its stylesheet is a fifth smaller
+  (57.6 to 45.4 kB) and its script about a tenth larger (716 to 794 kB, 241 kB gzipped).
+- `hmac` 0.13, `sha2` 0.11 and `nix` 0.31, the versions the SNMP library already used, so the
+  build holds one copy of each instead of two. Webhook signatures are unchanged.
+
+### Project
 
 - Security problems are reported privately on GitHub (`docs/SECURITY.md`, "Reporting a
   vulnerability").
-- `CONTRIBUTING.md`, issue templates, and weekly dependency updates by Dependabot.
-- Each release's image is run on amd64 and arm64 after it is published.
+- `CONTRIBUTING.md`, issue forms, and weekly dependency updates by Dependabot.
+- Every release's image is run on amd64 and arm64 after it is published: cfgmaker, a poll,
+  `/metrics` and `/docs`, as the manual's Docker quick start does it.
+- Rebuilding the web UI gives the same files every time (Tailwind no longer reads the previous
+  build), and CI checks that the committed UI is what its sources build.
 
 ## 0.2.0 (2026-10-21)
 

@@ -13,7 +13,7 @@ body:
     attributes:
       label: Version
       description: The output of `linkscope --version`, or the image tag.
-      placeholder: linkscope 0.2.0
+      placeholder: linkscope 0.2.1
     validations:
       required: true
   - type: dropdown
