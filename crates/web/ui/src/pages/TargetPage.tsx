@@ -104,7 +104,7 @@ export function TargetPage({ name }: { name: string }) {
         <Alert variant="error">
           <CircleX />
           <AlertTitle>The last poll failed</AlertTitle>
-          <AlertDescription className="break-words">{t.error}</AlertDescription>
+          <AlertDescription className="wrap-break-word">{t.error}</AlertDescription>
         </Alert>
       )}
 

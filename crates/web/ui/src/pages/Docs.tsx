@@ -198,8 +198,8 @@ export function DocsPage({ lang, slug }: { lang: string; slug: string }) {
         <Card className="p-6 sm:p-8">
           {page && page.slug === slug && page.lang === lang ? (
             <article lang={lang} onClick={follow}>
-              <h1 className="text-display break-words">{page.title}</h1>
-              <HtmlContent html={page.html} className="doc-prose mt-6" />
+              <h1 className="text-display wrap-break-word">{page.title}</h1>
+              <HtmlContent html={page.html} prose className="mt-6" />
             </article>
           ) : (
             <DocsSkeleton />

@@ -5,7 +5,7 @@ import { useTheme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 const faceClass =
-  'absolute inset-0 flex items-center justify-center rounded-pill backface-hidden [&_svg]:size-[1.125rem]'
+  'absolute inset-0 flex items-center justify-center rounded-pill backface-hidden [&_svg]:size-4.5'
 
 /**
  * One coin: the sun on its face, the moon on its back. Clicking flips it
