@@ -86,7 +86,9 @@ See [Security](security.md) for the full model.
 - Each agent may take at most 80 % of `Interval` per cycle. After that, its targets are unknown
   for the cycle and the others carry on.
 - External commands: only the first four lines are read (as in MRTG), then the command's process
-  group is stopped; the timeout is 120 s.
+  group is stopped; the timeout is 120 s. The group is also stopped when the command finishes, so
+  something it started in the background does not keep running (MRTG left it). `PathAdd` with
+  no `PATH` set gives that directory alone, never the current directory.
 - Threshold programs and mails run in the background, eight at a time.
 - Values longer than 64 characters from agents or commands are rejected.
 - A log that cannot be written is reported as an error (in the UI and the log). As in MRTG, it

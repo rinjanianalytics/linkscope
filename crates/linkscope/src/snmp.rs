@@ -270,6 +270,10 @@ pub struct Session {
     inner: AsyncSession,
     ep: Endpoint,
     initialized: bool,
+    /// The last exchange did not finish with an answer: it failed, or it was dropped mid-way (an
+    /// agent's time budget ran out). The library reuses a request id after a timeout, so a late
+    /// reply to that exchange would be taken for the answer to the next one.
+    unsettled: bool,
 }
 
 #[derive(Debug)]
@@ -287,6 +291,18 @@ enum Req<'a> {
 
 const ERR_TOO_BIG: u32 = 1;
 const ERR_NO_SUCH_NAME: u32 = 2;
+
+/// The values of one GET reply, each placed where it was asked for: matched by OID, not only by
+/// position, so an answer for another object (a stray or a stale reply) is no value for this one.
+fn place_values(take: &[usize], want: &[String], varbinds: &[(String, Val)], out: &mut [Val]) {
+    for (k, &i) in take.iter().enumerate() {
+        if let Some((oid, v)) = varbinds.get(k) {
+            if *oid == want[i] {
+                out[i] = v.clone();
+            }
+        }
+    }
+}
 
 fn to_oid(s: &str) -> Result<Oid<'static>, SnmpError> {
     let parts = parse_numeric(s).ok_or_else(|| SnmpError::Protocol(format!("bad OID {s}")))?;
@@ -308,7 +324,7 @@ impl Session {
             }
         }
         .map_err(|e| SnmpError::Protocol(format!("socket for {}: {e}", ep.display())))?;
-        Ok(Session { inner, ep: ep.clone(), initialized: ep.version != SnmpVersion::V3 })
+        Ok(Session { inner, ep: ep.clone(), initialized: ep.version != SnmpVersion::V3, unsettled: false })
     }
 
     pub fn endpoint(&self) -> &Endpoint {
@@ -334,21 +350,36 @@ impl Session {
     }
 
     async fn exchange(&mut self, req: &Req<'_>) -> Result<Resp, SnmpError> {
+        // A session whose last exchange ended without an answer starts over on a new socket, so a
+        // late reply to that exchange can never be read as this one's.
+        if self.unsettled {
+            self.reopen().await?;
+        }
+        self.unsettled = true;
         let (res, rejected) = self.exchange_once(req).await;
-        match res {
+        let res = match res {
             // The v3 library sets a session's engine boots and time from a reply before it has
             // checked the reply's authentication, so one forged datagram can make every genuine
             // reply fail from then on. When replies came but were refused, or authentication
             // failed, start over once: a new socket (a new port to guess) and a fresh discovery.
-            // Plain timeouts (the device is down) do not reopen it.
+            // Plain timeouts (the device is down) do not retry here.
             Err(e) if self.ep.version == SnmpVersion::V3 && (rejected || matches!(e, SnmpError::V3(_))) => {
                 tracing::debug!("SNMPv3 session for {} reopened after: {e}", self.ep.display());
-                let ep = self.ep.clone();
-                *self = Session::open(&ep).await?;
+                self.reopen().await?;
+                self.unsettled = true;
                 self.exchange_once(req).await.0
             }
             r => r,
-        }
+        };
+        self.unsettled = res.is_err();
+        res
+    }
+
+    /// The same endpoint on a new socket (and for v3 a new discovery).
+    async fn reopen(&mut self) -> Result<(), SnmpError> {
+        let ep = self.ep.clone();
+        *self = Session::open(&ep).await?;
+        Ok(())
     }
 
     /// One request with its retries. Also says whether a reply arrived but was refused.
@@ -413,6 +444,8 @@ impl Session {
         let mut out = vec![Val::Missing; oids.len()];
         let parsed: Vec<Option<Oid<'static>>> = oids.iter().map(|o| to_oid(o).ok()).collect();
         let mut chunk = self.ep.max_varbinds.max(1);
+        // The OID each answer must carry, as the library writes it.
+        let want: Vec<String> = parsed.iter().map(|o| o.as_ref().map(|o| o.to_id_string()).unwrap_or_default()).collect();
         let mut pending: Vec<usize> = (0..oids.len()).filter(|&i| parsed[i].is_some()).collect();
         while !pending.is_empty() {
             let take: Vec<usize> = pending.iter().copied().take(chunk).collect();
@@ -420,11 +453,7 @@ impl Session {
             let r = self.exchange(&Req::Get(&batch)).await?;
             match r.error_status {
                 0 => {
-                    for (k, &i) in take.iter().enumerate() {
-                        if let Some((_, v)) = r.varbinds.get(k) {
-                            out[i] = v.clone();
-                        }
-                    }
+                    place_values(&take, &want, &r.varbinds, &mut out);
                     pending.drain(..take.len());
                 }
                 ERR_NO_SUCH_NAME => {
@@ -459,6 +488,17 @@ impl Session {
     /// Walk the subtree under `base` and return `(suffix, value)` pairs,
     /// where suffix is the OID part after `base.`. Uses GETBULK on v2c/v3.
     pub async fn walk(&mut self, base: &str) -> Result<Vec<(String, Val)>, SnmpError> {
+        self.walk_rows(base, MAX_WALK_ROWS, false).await
+    }
+
+    /// Walk `base` for at most `max_rows` rows and stop there (the rest is not read).
+    pub async fn walk_first(&mut self, base: &str, max_rows: usize) -> Result<Vec<(String, Val)>, SnmpError> {
+        self.walk_rows(base, max_rows.min(MAX_WALK_ROWS), true).await
+    }
+
+    /// A walk: at most `max_rows` rows and [`MAX_WALK_BYTES`] (counting each row's overhead), and
+    /// 600 s. Past the rows, `stop_early` ends it with what it has; otherwise it is an error.
+    async fn walk_rows(&mut self, base: &str, max_rows: usize, stop_early: bool) -> Result<Vec<(String, Val)>, SnmpError> {
         let base = base.trim_start_matches('.').to_string();
         let prefix = format!("{base}.");
         let mut out = Vec::new();
@@ -467,7 +507,10 @@ impl Session {
         let started = Instant::now();
         let mut bytes = 0usize;
         loop {
-            if started.elapsed() > Duration::from_secs(600) || out.len() > 1_000_000 || bytes > MAX_WALK_BYTES {
+            if out.len() >= max_rows && stop_early {
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(600) || out.len() > max_rows || bytes > MAX_WALK_BYTES {
                 return Err(SnmpError::Protocol(format!("walk of {base} on {} did not terminate", self.ep.display())));
             }
             let o = to_oid(&cur)?;
@@ -490,8 +533,12 @@ impl Session {
                     done = true;
                     break;
                 }
+                if out.len() >= max_rows && stop_early {
+                    done = true;
+                    break;
+                }
                 cur = oid.clone();
-                bytes += oid.len() + match &v {
+                bytes += WALK_ROW_OVERHEAD + oid.len() + match &v {
                     Val::Str(b) | Val::Opaque(b) => b.len(),
                     _ => 8,
                 };
@@ -515,6 +562,11 @@ fn next_timeout(t: Duration, backoff: f64) -> Duration {
 
 /// Total value bytes a single walk may return.
 pub const MAX_WALK_BYTES: usize = 32 * 1024 * 1024;
+/// Rows one walk may return: far more than any interface table (it was a million).
+pub const MAX_WALK_ROWS: usize = 100_000;
+/// What a row costs besides its OID and value (strings, the value, the vector), counted against
+/// [`MAX_WALK_BYTES`] so that many tiny rows cannot use far more memory than the cap says.
+const WALK_ROW_OVERHEAD: usize = 96;
 
 /// Numeric OID comparison.
 pub fn oid_gt(a: &str, b: &str) -> bool {
@@ -562,6 +614,51 @@ impl SessionPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_values_are_matched_by_oid() {
+        let want = vec!["1.3.6.1.2.1.2.2.1.10.1".to_string(), "1.3.6.1.2.1.2.2.1.16.1".to_string()];
+        let mut out = vec![Val::Missing, Val::Missing];
+        // The right objects in order: both placed.
+        let ok = vec![(want[0].clone(), Val::Unsigned(5)), (want[1].clone(), Val::Unsigned(7))];
+        place_values(&[0, 1], &want, &ok, &mut out);
+        assert_eq!(out, [Val::Unsigned(5), Val::Unsigned(7)]);
+        // A reply for other objects (another interface, a stale answer): nothing placed.
+        let mut out = vec![Val::Missing, Val::Missing];
+        let other = vec![("1.3.6.1.2.1.2.2.1.10.2".to_string(), Val::Unsigned(9)), (want[1].clone(), Val::Unsigned(7))];
+        place_values(&[0, 1], &want, &other, &mut out);
+        assert_eq!(out, [Val::Missing, Val::Unsigned(7)]);
+    }
+
+    /// A session whose request got no answer asks again from a new socket, so a late reply to the
+    /// old request (the library reuses its id) cannot be read as the new one's. Nothing answers
+    /// here: the test only watches where the requests come from.
+    #[tokio::test]
+    async fn an_unanswered_request_is_followed_by_a_new_socket() {
+        let sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let ep = Endpoint {
+            host: "127.0.0.1".into(),
+            port: sink.local_addr().unwrap().port(),
+            version: SnmpVersion::V2c,
+            community: "public".into(),
+            v3: None,
+            timeout: Duration::from_millis(100),
+            retries: 0,
+            backoff: 1.0,
+            ipv4only: true,
+            max_repetitions: 25,
+            use_getbulk: true,
+            max_varbinds: 32,
+        };
+        let mut s = Session::open(&ep).await.unwrap();
+        let oid = vec!["1.3.6.1.2.1.1.5.0".to_string()];
+        assert!(s.get(&oid).await.is_err());
+        assert!(s.get(&oid).await.is_err());
+        let mut buf = [0u8; 1500];
+        let (_, first) = sink.recv_from(&mut buf).await.unwrap();
+        let (_, second) = sink.recv_from(&mut buf).await.unwrap();
+        assert_ne!(first.port(), second.port(), "the second request came from the same socket");
+    }
 
     #[test]
     fn v3_settings_are_complete_or_refused() {

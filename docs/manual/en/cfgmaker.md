@@ -55,7 +55,9 @@ linkscope cfgmaker --username linkscope --authprotocol sha256 \
 
 The options are written into each target's `SnmpOptions[]`. They take effect only for devices
 with version 3; for other devices they are left out. The command line in the file's header shows
-the passwords as `XXXXX`.
+the passwords, keys and communities (options and `community@router`) as `XXXXX`.
+
+cfgmaker writes at most 50,000 interfaces for one device; a device reporting more is an error.
 
 ## Options
 
