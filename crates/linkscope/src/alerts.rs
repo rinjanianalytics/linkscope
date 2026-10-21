@@ -353,6 +353,24 @@ pub struct Hook {
     url: String,
     secret: Vec<u8>,
     client: reqwest::Client,
+    /// Seconds before each attempt.
+    waits: [u64; 3],
+}
+
+/// `X-LinkScope-Delivery`: one notice's id, the same on each of its attempts. Delivery is at
+/// least once (an attempt that timed out may have arrived), so a receiver drops a delivery id it
+/// has already seen. Unique, not secret: the time, a counter and the process's random hash keys.
+fn delivery_id() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(nanos);
+    h.write_u64(n);
+    h.write_u32(std::process::id());
+    format!("{:016x}{:016x}", h.finish(), (nanos as u64) ^ n.rotate_left(32))
 }
 
 impl Hook {
@@ -362,10 +380,12 @@ impl Hook {
             .connect_timeout(Duration::from_secs(5))
             // A redirect would carry the signed body somewhere unconfigured.
             .redirect(reqwest::redirect::Policy::none())
+            // Nor does a proxy from the environment (HTTP_PROXY, ALL_PROXY) see it.
+            .no_proxy()
             .user_agent(concat!("LinkScope/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| anyhow::anyhow!("{}", e.without_url()))?;
-        Ok(Hook { url: url.to_string(), secret: secret.as_bytes().to_vec(), client })
+        Ok(Hook { url: url.to_string(), secret: secret.as_bytes().to_vec(), client, waits: [0, 2, 10] })
     }
 
     /// Post one body. Retries after 2 s and 10 s on a network error, a 5xx
@@ -373,7 +393,8 @@ impl Hook {
     /// may carry a token).
     pub async fn send(&self, target: &str, body: String) {
         let mut last = String::new();
-        for wait in [0u64, 2, 10] {
+        let delivery = delivery_id();
+        for wait in self.waits {
             tokio::time::sleep(Duration::from_secs(wait)).await;
             let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
             let res = self
@@ -381,6 +402,7 @@ impl Hook {
                 .post(&self.url)
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .header("X-LinkScope-Event", "threshold")
+                .header("X-LinkScope-Delivery", &delivery)
                 .header("X-LinkScope-Timestamp", ts.to_string())
                 .header("X-LinkScope-Signature", sign(&self.secret, ts, &body))
                 .body(body.clone())
@@ -406,6 +428,52 @@ impl Hook {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One notice's attempts carry one delivery id (receivers deduplicate on it), each with a
+    /// signature over its own timestamp.
+    #[tokio::test]
+    async fn retries_carry_one_delivery_id() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            for status in ["500 Internal Server Error", "503 Service Unavailable", "200 OK"] {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut req = Vec::new();
+                let mut buf = [0u8; 4096];
+                // Headers, then the body by Content-Length.
+                loop {
+                    let n = sock.read(&mut buf).await.unwrap();
+                    req.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&req).to_string();
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let len = text.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+                        if req.len() >= end + 4 + len || n == 0 {
+                            break;
+                        }
+                    }
+                }
+                sock.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                seen.push(String::from_utf8_lossy(&req).to_string());
+            }
+            seen
+        });
+        let mut hook = Hook::new(&format!("http://{addr}/hook"), "0123456789abcdef-secret").unwrap();
+        hook.waits = [0, 0, 0];
+        hook.send("r1", r#"{"event":"threshold"}"#.into()).await;
+        let seen = server.await.unwrap();
+        assert_eq!(seen.len(), 3);
+        let header = |req: &str, name: &str| req.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_string())).unwrap();
+        let ids: Vec<String> = seen.iter().map(|r| header(r, "x-linkscope-delivery")).collect();
+        assert!(ids[0].len() == 32 && ids.iter().all(|i| *i == ids[0]), "{ids:?}");
+        for r in &seen {
+            let ts: i64 = header(r, "x-linkscope-timestamp").parse().unwrap();
+            assert_eq!(header(r, "x-linkscope-signature"), sign(b"0123456789abcdef-secret", ts, r#"{"event":"threshold"}"#));
+        }
+        // Another notice, another id.
+        assert_ne!(delivery_id(), ids[0]);
+    }
 
     fn cfg(dir: &Path, body: &str) -> Config {
         let work = dir.join("work");

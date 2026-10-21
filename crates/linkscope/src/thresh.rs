@@ -14,11 +14,16 @@
 //! [`transition`] is what a `ThreshFor[]` target runs when
 //! [`crate::alerts`] decides an alert fired or cleared.
 //!
-//! Hardening: programs are executed directly (no shell) with a timeout,
-//! state files are created with `O_NOFOLLOW`, and mail headers are built
-//! from values with CR/LF removed.
+//! Hardening: programs are executed directly (no shell) in a process group of
+//! their own, killed as a group on timeout; state files are created with
+//! `O_NOFOLLOW`, and one that cannot be used is remembered in memory rather
+//! than firing on every poll; mail headers are built from values with CR/LF
+//! removed, and configured secrets are taken out of mail and program
+//! arguments ([`redacted`]).
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use linkscope_config::{Config, Target};
@@ -54,6 +59,59 @@ fn pagetop_text(pt: &str) -> String {
     let s = H1.replace(pt, "").into_owned();
     let s = ROW.replace_all(&s, "$1 $2\n").into_owned();
     TAG.replace_all(&s, "").into_owned()
+}
+
+/// `action` with the configured secrets taken out of what leaves the process: a mail's subject
+/// and body, a program's arguments (not the program itself) and its `THRESH_DESC`. A `Title[]`,
+/// `ThreshDesc[]` or `PageTop[]` that quotes a community or a password must not mail it, as the
+/// webhook body never carries it. `SetEnv[]` is left as configured: passing a value to a program
+/// is what it is for. `redact` is the configuration's secret list (`View::redact_secrets`), which
+/// leaves ordinary text, e-mail addresses included, as it is.
+pub fn redacted(action: Action, redact: &dyn Fn(&str) -> String) -> Action {
+    match action {
+        Action::Run { mut argv, env } => {
+            for a in argv.iter_mut().skip(1) {
+                *a = redact(a);
+            }
+            let env = env.into_iter().map(|(k, v)| if k == "THRESH_DESC" { (k, redact(&v)) } else { (k, v) }).collect();
+            Action::Run { argv, env }
+        }
+        Action::Mail { to, subject, body } => Action::Mail { to, subject: redact(&subject), body: redact(&body) },
+        w @ Action::Webhook { .. } => w,
+    }
+}
+
+/// Where alerts would travel in clear, for a warning at startup and on reload: threshold mail as
+/// plain SMTP (no `AlertMailUser`) to a server that is not this host, and an `http://` webhook to
+/// a host that is not this one. Both stay allowed (MRTG sends plain SMTP). Never quotes the
+/// webhook URL, which may carry a token.
+pub fn cleartext_warnings(cfg: &Config) -> Vec<String> {
+    let local = |host: &str| {
+        let h = host.trim_start_matches('[').trim_end_matches(']');
+        h.eq_ignore_ascii_case("localhost") || h.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+    };
+    let mut out = Vec::new();
+    let g = &cfg.global;
+    let mails = cfg.targets.iter().any(|t| t.thresholds.mail_address.is_some());
+    if let (true, Some(server), None) = (mails, &g.thresh_mail_server, &g.alert_mail_user) {
+        let host = match server.rsplit_once(':') {
+            Some((h, p)) if !h.contains(':') && p.parse::<u16>().is_ok() => h,
+            _ => server.as_str(),
+        };
+        if !local(host) {
+            out.push(format!(
+                "threshold mail to {host} goes as plain SMTP, without TLS, as MRTG sends it; set AlertMailUser and AlertMailPassword to send it over STARTTLS with a login"
+            ));
+        }
+    }
+    if let Some(url) = &g.alert_webhook {
+        if let Ok(u) = reqwest::Url::parse(url) {
+            if u.scheme() == "http" && !u.host_str().is_some_and(local) {
+                out.push("AlertWebhook uses http://: alert bodies, and any token in its URL, travel unencrypted; use https://".into());
+            }
+        }
+    }
+    out
 }
 
 /// State-file base for a target: `ThreshDir/<cfg file name>.<target>`.
@@ -201,6 +259,59 @@ fn state_file(base: &Path, e: &Eval) -> PathBuf {
     PathBuf::from(format!("{}.thresh{}{}", base.display(), e.bound, e.dir.to_ascii_uppercase()))
 }
 
+/// Whether a `ThreshDir` state file says the bound was reported broken: `Ok(true)` for a regular
+/// file of ours, `Ok(false)` when there is none, an error when something else stands there (a
+/// directory, a FIFO, a link, a file of another account), which cannot be trusted either way.
+fn state_present(s: &Path) -> Result<bool, String> {
+    use std::os::unix::fs::MetadataExt;
+    match std::fs::symlink_metadata(s) {
+        Ok(m) if !m.file_type().is_file() => Err(format!("{} is not a regular file", s.display())),
+        // SAFETY: geteuid takes no arguments, has no preconditions and cannot fail.
+        Ok(m) if m.uid() != unsafe { libc::geteuid() } => Err(format!("{} belongs to uid {}, not to LinkScope's account", s.display(), m.uid())),
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("{}: {e}", s.display())),
+    }
+}
+
+/// Bounds reported broken whose state file could not be used: remembered here until they clear
+/// (or LinkScope restarts), so the notice goes once per change, not on every poll.
+static UNSTORED: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
+
+fn unstored(f: impl FnOnce(&mut HashSet<PathBuf>) -> bool) -> bool {
+    f(UNSTORED.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new))
+}
+
+/// MRTG's once-per-change rule with `ThreshDir`: whether to notify now. A state file that cannot
+/// be created or read is an error in the log, and the change is remembered in memory instead.
+fn state_fires(s: &Path, broken: bool) -> bool {
+    match (broken, state_present(s)) {
+        (true, Ok(true)) => false,
+        (true, Ok(false)) => match crate::fsutil::create_new(s, 0o644) {
+            Ok(_) => true,
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(err) => {
+                tracing::error!("creating threshold state {}: {err}; remembering it in memory instead", s.display());
+                unstored(|m| m.insert(s.to_path_buf()))
+            }
+        },
+        (true, Err(why)) => {
+            tracing::error!("threshold state {why}; remembering it in memory instead");
+            unstored(|m| m.insert(s.to_path_buf()))
+        }
+        (false, Ok(true)) => {
+            let _ = std::fs::remove_file(s);
+            unstored(|m| m.remove(s));
+            true
+        }
+        (false, Ok(false)) => unstored(|m| m.remove(s)),
+        (false, Err(why)) => {
+            tracing::error!("threshold state {why}; left as it is");
+            unstored(|m| m.remove(s))
+        }
+    }
+}
+
 /// Evaluate thresholds for one target given the current in/out rates, as
 /// MRTG does. State files are updated here; the returned actions are
 /// executed by the caller (see [`execute`]).
@@ -218,21 +329,7 @@ pub fn check_evals(cfg: &Config, t: &Target, evals: &[Eval]) -> Vec<Action> {
         let state = base.as_ref().map(|b| state_file(b, e));
         let (bound, boundval, threshval) = (e.bound, e.boundval, e.threshval);
         let fire = match (&state, e.broken) {
-            (Some(s), true) => match crate::fsutil::create_new(s, 0o644) {
-                Ok(_) => true,
-                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => false,
-                Err(err) => {
-                    tracing::warn!("creating {}: {err}", s.display());
-                    true
-                }
-            },
-            (Some(s), false) => match std::fs::symlink_metadata(s) {
-                Ok(_) => {
-                    let _ = std::fs::remove_file(s);
-                    true
-                }
-                Err(_) => false,
-            },
+            (Some(s), broken) => state_fires(s, broken),
             (None, true) => {
                 // MRTG's rule without ThreshDir (hysteresis only if set explicitly).
                 let hyst = cfg.raw.global.get("threshhyst").map(|h| perl_num(h));
@@ -255,14 +352,18 @@ pub fn check_evals(cfg: &Config, t: &Target, evals: &[Eval]) -> Vec<Action> {
 /// once. `ThreshDir`'s state file follows, for tools that read it.
 pub fn transition(cfg: &Config, t: &Target, e: &Eval) -> Vec<Action> {
     if let Some(s) = state_base(cfg, t).map(|b| state_file(&b, e)) {
-        if e.broken {
-            match crate::fsutil::create_new(&s, 0o644) {
+        // Kept for tools that read it; the alert book decides, so only errors are reported.
+        match (e.broken, state_present(&s)) {
+            (_, Err(why)) => tracing::error!("threshold state {why}; left as it is"),
+            (true, Ok(false)) => match crate::fsutil::create_new(&s, 0o644) {
                 Ok(_) => {}
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(err) => tracing::warn!("creating {}: {err}", s.display()),
+                Err(err) => tracing::error!("creating threshold state {}: {err}", s.display()),
+            },
+            (false, Ok(true)) => {
+                let _ = std::fs::remove_file(&s);
             }
-        } else if std::fs::symlink_metadata(&s).is_ok() {
-            let _ = std::fs::remove_file(&s);
+            _ => {}
         }
     }
     notices(t, e, &prog_env(t))
@@ -300,18 +401,7 @@ pub async fn execute(cfg: &Config, actions: Vec<Action>) {
         set.spawn(async move {
             let _p = sem.acquire_owned().await;
             match a {
-                Action::Run { argv, env } => {
-                    let mut c = tokio::process::Command::new(&argv[0]);
-                    c.args(&argv[1..]).envs(env).stdin(std::process::Stdio::null()).kill_on_drop(true);
-                    match c.spawn() {
-                        Ok(mut child) => {
-                            if tokio::time::timeout(Duration::from_secs(60), child.wait()).await.is_err() {
-                                tracing::warn!("threshold program {} timed out after 60s", argv[0]);
-                            }
-                        }
-                        Err(e) => tracing::warn!("running threshold program {}: {e}", argv[0]),
-                    }
-                }
+                Action::Run { argv, env } => run_program(&argv, env, PROGRAM_TIMEOUT).await,
                 Action::Mail { to, subject, body } => {
                     if let (Some(m), Some(from)) = (mailer, sender) {
                         if let Err(e) = send_mail(&m, &from, &to, &subject, &body).await {
@@ -330,6 +420,46 @@ pub async fn execute(cfg: &Config, actions: Vec<Action>) {
     let all = async { while set.join_next().await.is_some() {} };
     if tokio::time::timeout(Duration::from_secs(600), all).await.is_err() {
         tracing::warn!("threshold actions still running after 10 minutes; abandoning them");
+    }
+}
+
+/// How long a threshold program may run.
+pub const PROGRAM_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Kills a program's process group when dropped: on its timeout, and when the batch it belongs to
+/// is abandoned (a stop, the ten-minute limit). Killing only the program left what it started
+/// running.
+struct Group(Option<i32>);
+
+impl Drop for Group {
+    fn drop(&mut self) {
+        if let Some(pg) = self.0 {
+            // SAFETY: kill(2) with a negative pid signals the process group the child leads.
+            unsafe { libc::kill(-pg, libc::SIGKILL) };
+        }
+    }
+}
+
+/// Run one threshold program directly (no shell), in a process group of its own, for at most
+/// `timeout`; its whole group is killed when it times out or is abandoned.
+pub async fn run_program(argv: &[String], env: Vec<(String, String)>, timeout: Duration) {
+    let Some(prog) = argv.first() else { return };
+    let mut c = tokio::process::Command::new(prog);
+    c.args(&argv[1..]).envs(env).stdin(std::process::Stdio::null()).kill_on_drop(true).process_group(0);
+    match c.spawn() {
+        Ok(mut child) => {
+            let group = Group(child.id().and_then(|p| i32::try_from(p).ok()));
+            match tokio::time::timeout(timeout, child.wait()).await {
+                // Exited: what it left behind is its business, as in MRTG.
+                Ok(_) => std::mem::forget(group),
+                Err(_) => {
+                    tracing::warn!("threshold program {prog} timed out after {} s; its process group is killed", timeout.as_secs());
+                    drop(group);
+                    let _ = child.wait().await;
+                }
+            }
+        }
+        Err(e) => tracing::warn!("running threshold program {prog}: {e}"),
     }
 }
 
@@ -377,4 +507,102 @@ async fn send_mail(mailer: &Mailer, from: &str, to: &str, subject: &str, body: &
 pub fn program_ok(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn load(dir: &Path, body: &str) -> Config {
+        let work = dir.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let path = dir.join("m.cfg");
+        std::fs::write(&path, format!("WorkDir: {}\n{body}", work.display())).unwrap();
+        linkscope_config::load(&path, &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off }, &linkscope_config::CheckOptions::default()).unwrap()
+    }
+
+    #[test]
+    fn secrets_leave_neither_by_mail_nor_as_program_arguments() {
+        let redact = |t: &str| t.replace("comm-SECRET", "•••");
+        let mail = Action::Mail { to: "noc@example.com".into(), subject: "[MRTG-TH] BROKEN r1 comm-SECRET".into(), body: "Title comm-SECRET\nmail noc@example.com".into() };
+        assert_eq!(
+            redacted(mail, &redact),
+            Action::Mail { to: "noc@example.com".into(), subject: "[MRTG-TH] BROKEN r1 •••".into(), body: "Title •••\nmail noc@example.com".into() }
+        );
+        let run = Action::Run {
+            argv: vec!["/opt/comm-SECRET/notify".into(), "r1".into(), "30%".into(), "41.7".into(), "desc comm-SECRET".into()],
+            env: vec![("THRESH_DESC".into(), "desc comm-SECRET".into()), ("TOKEN".into(), "comm-SECRET".into())],
+        };
+        assert_eq!(
+            redacted(run, &redact),
+            Action::Run {
+                // The program is run as configured; SetEnv passes what it was given.
+                argv: vec!["/opt/comm-SECRET/notify".into(), "r1".into(), "30%".into(), "41.7".into(), "desc •••".into()],
+                env: vec![("THRESH_DESC".into(), "desc •••".into()), ("TOKEN".into(), "comm-SECRET".into())],
+            }
+        );
+        let hook = Action::Webhook { target: "r1".into(), body: "{}".into() };
+        assert_eq!(redacted(hook.clone(), &redact), hook);
+    }
+
+    #[test]
+    fn alerts_in_clear_are_warned_about() {
+        let d = tempfile::tempdir().unwrap();
+        let target = "Target[r1]: 2:public@192.0.2.1\nTitle[r1]: R1\nMaxBytes[r1]: 100\nThreshMaxI[r1]: 30%\n";
+        let cfg = |g: &str| {
+            let mail = if g.contains("ThreshMailServer") { "ThreshMailAddress[r1]: noc@example.com\n" } else { "" };
+            load(d.path(), &format!("{g}{target}{mail}"))
+        };
+        let plain = cleartext_warnings(&cfg("ThreshMailServer: 192.0.2.25\nThreshMailSender: lab@example.com\n"));
+        assert!(plain.len() == 1 && plain[0].contains("plain SMTP") && plain[0].contains("192.0.2.25"), "{plain:?}");
+        assert!(cleartext_warnings(&cfg("ThreshMailServer: 127.0.0.1:25\nThreshMailSender: lab@example.com\n")).is_empty());
+        assert!(cleartext_warnings(&cfg("ThreshMailServer: 192.0.2.25:587\nThreshMailSender: lab@example.com\nAlertMailUser: lab\nAlertMailPassword: pw-SECRET\n")).is_empty());
+        let hook = cleartext_warnings(&cfg("AlertWebhook: http://hooks.example.com/t/tok-SECRET\nAlertWebhookSecret: 0123456789abcdef-x\n"));
+        assert!(hook.len() == 1 && hook[0].contains("http://") && !hook[0].contains("tok-SECRET") && !hook[0].contains("hooks.example.com"), "{hook:?}");
+        assert!(cleartext_warnings(&cfg("AlertWebhook: https://hooks.example.com/t\nAlertWebhookSecret: 0123456789abcdef-x\n")).is_empty());
+        assert!(cleartext_warnings(&cfg("AlertWebhook: http://127.0.0.1:9000/t\nAlertWebhookSecret: 0123456789abcdef-x\n")).is_empty());
+    }
+
+    /// With ThreshDir, MRTG notifies once per change. A state file that cannot be used must not
+    /// turn that into a notice on every poll, nor silence the change.
+    #[test]
+    fn an_unusable_state_file_notifies_once_per_change() {
+        let d = tempfile::tempdir().unwrap();
+        let tdir = d.path().join("thresh");
+        std::fs::create_dir(&tdir).unwrap();
+        let c = load(
+            d.path(),
+            &format!("ThreshDir: {}\nTarget[r1]: 2:public@192.0.2.1\nTitle[r1]: R1\nMaxBytes[r1]: 1000\nThreshMaxI[r1]: 30%\nThreshProgI[r1]: /bin/true\nThreshProgOKI[r1]: /bin/true\n", tdir.display()),
+        );
+        let t = &c.targets[0];
+        let runs = |r: f64| check(&c, t, Some(r), Some(0.0)).iter().filter(|a| matches!(a, Action::Run { .. })).count();
+        // A directory stands where the state file goes: neither usable nor removable as a file.
+        let state = state_file(&state_base(&c, t).unwrap(), &evaluate(t, Some(900.0), Some(0.0))[0]);
+        std::fs::create_dir(&state).unwrap();
+        assert_eq!([runs(900.0), runs(900.0), runs(900.0)], [1, 0, 0], "broken: once");
+        assert_eq!([runs(10.0), runs(10.0)], [1, 0], "cleared: once");
+        // And a ThreshDir that has gone (creating the file fails): the same, from memory.
+        std::fs::remove_dir(&state).unwrap();
+        std::fs::remove_dir(&tdir).unwrap();
+        assert_eq!([runs(900.0), runs(900.0), runs(10.0), runs(10.0)], [1, 0, 1, 0]);
+    }
+
+    /// A program that times out is killed with everything it started.
+    #[tokio::test]
+    async fn a_program_that_times_out_takes_its_process_group_with_it() {
+        let d = tempfile::tempdir().unwrap();
+        let pidfile = d.path().join("pid");
+        let script = format!("sleep 30 & echo $! > {}; sleep 30", pidfile.display());
+        let started = std::time::Instant::now();
+        run_program(&["/bin/sh".into(), "-c".into(), script], vec![], Duration::from_millis(500)).await;
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let pid: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
+        // Gone, or a zombie waiting for its new parent to reap it.
+        let alive = |pid: i32| std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| !s.split(") ").nth(1).is_some_and(|r| r.starts_with('Z')));
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while alive(pid) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(!alive(pid), "the program's background child {pid} survived");
+    }
 }

@@ -64,6 +64,12 @@ Kebiasaan unik MRTG dipertahankan bila memengaruhi data. Contohnya:
 - Nama target dan `Directory[]` tidak boleh mengandung `..` atau pemisah path yang keluar dari
   direktori kerja.
 - Direktori dibuat dengan mode 0755 (MRTG memakai 0777 dikurangi umask).
+- `ThreshProg*[]` menjalankan file yang ditemukan pemeriksaan konfigurasi (path relatif diambil dari
+  direktori tempat LinkScope dijalankan). MRTG memeriksa path tersebut tetapi menjalankan nama tanpa
+  path melalui `PATH`. File harus dapat dieksekusi.
+- Program ambang berjalan dalam process group sendiri; saat batas waktu 60 detiknya habis, seluruh
+  group dihentikan.
+- Email ambang dan argumen program menyembunyikan rahasia yang dikonfigurasi dengan `•••`.
 
 Lihat [Keamanan](security.md) untuk model lengkapnya.
 

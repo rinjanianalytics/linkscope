@@ -165,11 +165,38 @@ impl Engine {
 
     /// Wait for threshold actions still running (call before exiting).
     pub async fn finish(&mut self) {
+        self.finish_or(std::future::pending()).await;
+    }
+
+    /// Run what waits and wait for what runs, unless `stop` comes first: then the batches still
+    /// running are abandoned (their programs killed with their process groups, a mail or webhook
+    /// not yet sent is not sent). Returns how many batches were cut short.
+    pub async fn finish_or(&mut self, stop: impl std::future::Future<Output = ()>) -> usize {
         while let Some(batch) = self.waiting.pop_front() {
             let cfg = self.cfg.clone();
             self.actions.spawn(async move { thresh::execute(&cfg, batch).await });
         }
+        let actions = &mut self.actions;
+        let stopped = tokio::select! {
+            _ = async { while actions.join_next().await.is_some() {} } => false,
+            _ = stop => true,
+        };
+        if !stopped {
+            return 0;
+        }
+        let cut = self.actions.len();
+        self.actions.abort_all();
         while self.actions.join_next().await.is_some() {}
+        cut
+    }
+
+    /// Take over `old`'s threshold actions, running and waiting, so a reload neither waits for them
+    /// nor drops them. Waiting batches then run with this configuration's mail server and webhook.
+    pub fn adopt(&mut self, mut old: Engine) {
+        std::mem::swap(&mut self.actions, &mut old.actions);
+        let mut waiting = std::mem::take(&mut old.waiting);
+        waiting.append(&mut self.waiting);
+        self.waiting = waiting;
     }
 
     /// Run one complete cycle.
@@ -272,6 +299,10 @@ impl Engine {
             tracing::error!("{write_failures} of {n} logs could not be read or written this cycle; check permissions of {}", cfg.global.log_dir.display());
         }
         tracing::debug!("cycle timing: polling {poll_ms} ms, log updates and sync {} ms", t0.elapsed().as_millis() - poll_ms);
+
+        // No configured secret leaves in a mail or a program's arguments (the webhook body is
+        // redacted when it is made).
+        let actions: Vec<thresh::Action> = actions.into_iter().map(|a| thresh::redacted(a, &|text: &str| view.redact_secrets(text))).collect();
 
         // Threshold programs, mail and webhooks run in the background, a few batches at a time;
         // the others wait their turn rather than being dropped.
@@ -613,6 +644,38 @@ pub fn default_cache_path(cfg_path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn engine(dir: &std::path::Path) -> Engine {
+        let work = dir.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let path = dir.join("m.cfg");
+        std::fs::write(&path, format!("WorkDir: {}\nTarget[r1]: 2:public@192.0.2.1\nTitle[r1]: R1\nMaxBytes[r1]: 100\n", work.display())).unwrap();
+        let cfg = linkscope_config::load(&path, &linkscope_config::ReadOptions { trust: linkscope_config::TrustPolicy::Off }, &linkscope_config::CheckOptions::default()).unwrap();
+        let state: SharedState = Arc::new(std::sync::RwLock::new(linkscope_web::LiveState::default()));
+        Engine::new(Arc::new(cfg), Arc::new(OidResolver::default()), state, dir.join("m.ok"), EngineOptions::default())
+    }
+
+    fn slow() -> Vec<thresh::Action> {
+        vec![thresh::Action::Run { argv: vec!["/bin/sleep".into(), "30".into()], env: vec![] }]
+    }
+
+    /// A reload hands the actions in flight to the new engine; a stop cuts them short at once.
+    #[tokio::test]
+    async fn a_reload_keeps_actions_and_a_stop_does_not_wait_for_them() {
+        let d = tempfile::tempdir().unwrap();
+        let mut old = engine(d.path());
+        old.waiting.push_back(slow());
+        let cfg = old.cfg.clone();
+        old.actions.spawn(async move { thresh::execute(&cfg, slow()).await });
+        let mut new = engine(d.path());
+        new.adopt(old);
+        assert_eq!((new.waiting.len(), new.actions.len()), (1, 1));
+        let started = std::time::Instant::now();
+        let cut = new.finish_or(async {}).await;
+        assert_eq!(cut, 2, "the waiting batch is started, then both are cut short");
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        assert_eq!(new.actions.len(), 0);
+    }
 
     #[test]
     fn program_name_hides_arguments() {
