@@ -35,7 +35,7 @@ Check these before you replace 0.1.0:
 - **Relative `Include:` names** resolve against the main configuration's directory only.
 - **The cache and alert state** (`.ok`, `.alerts`) are written owner only (mode 600); a file
   readable by others is written again at the next save.
-- **Building from source** needs Rust 1.88 or newer.
+- **Building from source** needs Rust 1.89 or newer.
 
 ### Added
 
