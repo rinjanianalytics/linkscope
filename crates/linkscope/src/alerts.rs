@@ -370,7 +370,7 @@ pub fn webhook(cfg: &Config, view: &linkscope_web::api::View, ev: &Event) -> Opt
 /// `X-LinkScope-Signature`: `sha256=` and the hex HMAC-SHA256, keyed with
 /// `AlertWebhookSecret`, of the timestamp header, a full stop and the body.
 pub fn sign(secret: &[u8], timestamp: i64, body: &str) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret).expect("HMAC takes any key length");
     mac.update(timestamp.to_string().as_bytes());
     mac.update(b".");

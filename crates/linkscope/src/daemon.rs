@@ -47,7 +47,7 @@ pub fn ensure_owned_dir(dir: &Path, uid: Uid, gid: Gid) -> Result<()> {
         .open(dir)
         .with_context(|| format!("opening {}", dir.display()))?;
     if fd.metadata()?.uid() != uid.as_raw() || fd.metadata()?.gid() != gid.as_raw() {
-        nix::unistd::fchown(fd.as_raw_fd(), Some(uid), Some(gid))
+        nix::unistd::fchown(&fd, Some(uid), Some(gid))
             .with_context(|| format!("chown {}", dir.display()))?;
     }
     Ok(())
@@ -70,8 +70,7 @@ impl PidFile {
             match crate::fsutil::create_new(path, 0o644) {
                 Ok(file) => {
                     if let Some((u, g)) = owner {
-                        nix::unistd::fchown(file.as_raw_fd(), Some(u), Some(g))
-                            .context("chown pid file")?;
+                        nix::unistd::fchown(&file, Some(u), Some(g)).context("chown pid file")?;
                     }
                     let mut p = PidFile {
                         file,
