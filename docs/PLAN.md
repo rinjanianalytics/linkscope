@@ -216,38 +216,31 @@ listeners at scale. The owner asked for hidden bugs to be found before they do.
       - PathScope's network reads `/metrics` (200);
       - `.ok` and `.alerts` are 0600.
 
-Low and informational, not fixed yet:
-- **snmp2** (the root of the v3 finding stays upstream):
-  - a zero-length INTEGER and engine-time arithmetic overflow (panics in debug or fuzz builds);
-  - GET values matched by position, not OID;
-  - a late v3 reply accepted for a later request;
-  - a non-constant-time HMAC compare.
-- **A hostile device:** walks and the `.ok` cache can grow to hundreds of MB, and cfgmaker has no
-  interface cap.
-- **Logs:**
-  - a 4 MB log of blank lines expands to about 170 MB in memory;
-  - a log with a future time, or a 198-digit token, freezes its target;
-  - duplicate timestamps write `i64::MIN` rates.
-- **Alerts:**
-  - mail text is not redacted as the webhook body is;
-  - plain SMTP and `http://` webhooks pass without a warning;
-  - webhooks carry no delivery ID;
-  - the manual's Python verifier can raise on malformed headers;
-  - proxy variables apply to the webhook client.
-- **Files and processes:**
-  - the PID file is read by path as root;
-  - the `Directory[]` symlink check races with its use;
-  - Include has no fan-out limit, resolves relative names against the working directory first,
-    and blocks on a FIFO;
-  - `ThreshProg*` is checked against the working directory but run through `PATH`;
-  - threshold programs have no process group;
-  - `O_NONBLOCK` is hard-coded in `rate` for some architectures.
-- **The UI:**
-  - it shows `config_path` and the version;
-  - API answers have no `Cache-Control`;
-  - unknown `/api/*` paths return the UI's page with 200.
-- **npm:** 10 advisories in build tools only (PostCSS, Vite, Tailwind 3's helpers); the shipped
-  bundle has none. The full fix is Tailwind 4.
+The low and informational findings (2026-10-21: fix them before going public) are fixed in
+#11, one commit per area: SNMP and devices, alerts and threshold programs, logs and files and
+configuration reading, the web UI and its build tools (Vite 8, Tailwind 4, `npm audit` clean).
+`docs/SECURITY.md` has a row for each. Behavior that changed with them:
+- a bare `ThreshProg*[]` name means the file in the working directory, not one found on `PATH`;
+- an EXEC target's leftover processes are ended after it exits;
+- a PID file of another live process no longer blocks startup (the lock decides);
+- relative Include names resolve against the main config's directory only;
+- the summary gives the configuration's file name, not its path.
+
+- [x] The low findings fixed, tested and checked against the lab's data.
+      2026-10-21 (#11): 114 workspace tests pass, clippy clean on the four crates. The release
+      build's `--check` accepts the lab's config. Against a copy of the lab's config and logs,
+      polling the real CHR: 2 of 2 targets ok, no write failures, `config_name` and no path, a
+      foreign Host 421, an unknown API path 404, `no-store` on live data, `.ok` 0600, and the
+      connection attack again at most 268 descriptors with `/healthz` in 5.2 s. The UI after
+      Vite 8 and Tailwind 4 matches the old one in Chrome 154 (light, dark, desktop, phone).
+
+Still open, by choice or for later:
+- snmp2's own internals (a zero-length INTEGER shift, engine-time overflow, a non-constant-time
+  HMAC): the open decision below.
+- The version stays in the UI and `linkscope_info`: useful for monitoring, little to hide in an
+  open program.
+- `create_dirs` is not fully race-free between levels (it would need `mkdirat`); without `/proc`
+  the `Directory[]` protection falls back to the by-name check.
 
 ## Open decisions
 
@@ -260,4 +253,3 @@ Low and informational, not fixed yet:
 - The snmp2 SNMPv3 issue (state changed before authentication): report it to its maintainer
   privately, patch a fork, or replace the library. LinkScope works around it by reopening the
   session.
-- The low findings above: before the repository goes public, or after.
