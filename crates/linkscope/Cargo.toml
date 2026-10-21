@@ -23,7 +23,7 @@ async-snmp = { version = "=0.18.1", default-features = false, features = ["crypt
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
 bigdecimal = "0.4"
-nix = { version = "0.29", features = ["user", "fs", "process", "signal"] }
+nix = { version = "0.31", features = ["user", "fs", "process", "signal"] }
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -35,8 +35,8 @@ serde_json = "1"
 libc = "0.2"
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls", "rustls-native-certs", "ring"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 
 
 [dev-dependencies]
