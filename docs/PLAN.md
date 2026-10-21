@@ -390,6 +390,107 @@ of Release, builds both images without pushing.
       `linkscope_info{version="0.2.1"}`, the manual over the tailnet, a foreign Host refused
       (421). The rollback `target/release/linkscope.before-0.2.1` is 0.2.0, built from its tag.
 
+## gNMI beside SNMP (AK, 2026-10-22)
+
+SNMP reads every router LinkScope meets today, but the larger platforms now expose their counters
+through gNMI (gRPC Network Management Interface) and treat it as the main way to read them. AK asked
+for gNMI beside SNMP, so LinkScope reads more router models. SNMP stays: MikroTik and most older
+gear have no gNMI.
+
+**How it fits.** A gNMI interface is a third kind of data source beside SNMP and external
+programs (`Source` in `crates/config/src/target.rs`). It yields the same in and out octet
+counters, so the `.log` files, rates, alerts, `/metrics`, the API and the UI work on it unchanged.
+A target may even combine an SNMP and a gNMI source in one expression, as MRTG combines sources
+today.
+
+**Config** (proposed; the exact syntax is settled in build 4's PR):
+
+```
+GnmiDevice[srl1]: address=10.10.0.80:57400 user=linkscope password-file=/etc/linkscope/srl1.pass
+                  ca=/etc/linkscope/lab-ca.pem
+Target[srl1_e1-1]: gnmi:ethernet-1/1@srl1
+MaxBytes[srl1_e1-1]: 1250000000
+```
+
+- `gnmi:<interface>@<device>` is read only when `<device>` is a declared `GnmiDevice`, before
+  MRTG's own passes. A config without `GnmiDevice` parses exactly as before (ground rule 1).
+- TLS is on by default and the server's certificate is checked. `insecure` exists for labs but
+  must be written out, and the UI shows it on the target.
+- The password comes from a file or an environment variable, never inline. Client certificates
+  (mutual TLS) are an option. The password, the key and the file paths stay out of every output
+  (ground rule 2).
+- `model=openconfig` (the default) reads OpenConfig paths:
+  `/interfaces/interface[name=…]/state/counters/in-octets` and `out-octets`, plus `oper-status`,
+  `description` and the speed. Devices whose OpenConfig is off or partial use a vendor model
+  (`model=srl` first). Each model is a small table of paths in the code, so a new vendor is a
+  table and its tests, not new logic.
+
+**Crates.** `tonic` (MIT) and `prost` (Apache-2.0), with `gnmi.proto` and `gnmi_ext.proto` from
+openconfig/gnmi (Apache-2.0) compiled in pure Rust (no `protoc` on the build host). LinkScope
+already ships Apache-2.0-only crates (`ring`, `sync_wrapper`), so this adds nothing new to the GPL
+review in the open decisions. Build 4 records the binary and image size before and after, and
+keeps the minimum Rust at 1.89 or says why not.
+
+**The lab.** Nokia SR Linux runs as a free container (`ghcr.io/nokia/srlinux`; a few GB of
+memory, and the lab host has 31 GB) and answers both gNMI and SNMP. So one of its ports can be read both ways at once, which is
+the best check that the two agree. It gets its own compose file in `testenv/`, with a sender and
+a sink pushing traffic through it as the CHR's do. The CHR stays on SNMP; RouterOS has no gNMI.
+
+**Router models.** A model is marked tested only after a gate or a recorded run on that platform:
+real gear or the vendor's own lab image. "By spec" means its documentation lists gNMI with the
+OpenConfig interface counters; it should work but has not been run.
+
+| Platform | gNMI | LinkScope |
+|---|---|---|
+| Nokia SR Linux | yes, OpenConfig and native | tested in build 4's gate |
+| Arista EOS | yes, OpenConfig | by spec; cEOS-lab could be tested (needs an Arista account) |
+| Cisco IOS XR, IOS XE, NX-OS | yes, OpenConfig | by spec |
+| Juniper Junos, Junos Evolved | yes, OpenConfig | by spec |
+| Nokia SR OS | yes, OpenConfig and native | by spec |
+| Huawei VRP | on some models | by spec, per model |
+| MikroTik RouterOS | no | SNMP, as today |
+
+4. **gNMI targets.** `GnmiDevice[]` and `gnmi:` targets, read once per cycle with a gNMI `Get`
+   (or a `Subscribe` in `ONCE` mode where a device has no `Get` for state). One connection per
+   device, reused across cycles, inside the same per-agent time budget as SNMP, so a slow
+   device delays nobody else. Errors are named on the target: refused, TLS (with the reason),
+   wrong login, path not supported by the model, interface not found. `/metrics` and the API
+   gain the source kind (`snmp`, `gnmi`, `exec`); the UI shows it on the target page. The manual
+   gets a gNMI page in English and Bahasa.
+
+   Gate: on SR Linux in the lab, one busy port read by SNMP (64-bit counters) and by gNMI in the
+   same cycles for an hour:
+   - each poll's counters agree within the traffic between the two reads;
+   - the two targets' rates within 1 % of each other over the hour;
+   - a wrong password, an untrusted certificate and a stopped device are each named on their
+     target, and the other targets' cycle time stays within its budget;
+   - `insecure` is refused unless written out;
+   - no password, key or file path in the API, `/metrics`, alerts or the log (`no_secrets.rs`
+     extended);
+   - every existing test passes, and a config without the new keywords writes the same `.log`
+     files as before.
+5. **Discovery.** `linkscope cfgmaker` learns gNMI: given a device, it reads its interfaces (name,
+   description, state, speed), checks which model answers (OpenConfig, else the vendor's), and
+   writes the `GnmiDevice[]` and one target per interface, with `MaxBytes` from the speed, as it
+   does for SNMP. A mock gNMI server in `crates/mockagent` replays recorded answers, so every
+   model's paths are tested in CI without a router.
+
+   Gate: on SR Linux, the generated config polls every port that is up in its first cycle, with
+   the right `MaxBytes`. Against the mock, the OpenConfig and SR Linux models both produce
+   targets; a device answering neither is named, not skipped silently.
+6. **Streaming (later, after 0.3.0).** A `Subscribe` in `SAMPLE` mode, every 10 s for example,
+   keeps a live rate per gNMI target for the UI and `/metrics`, while the `.log` files still get
+   one value per cycle as MRTG writes them. Planned only after builds 4 and 5 run on a real
+   install, since it changes how often LinkScope talks to a router.
+
+   Gate: written when the build starts.
+
+Builds 4 and 5 ship together as 0.3.0.
+
+- [ ] Build 4: gNMI targets, SR Linux read by SNMP and gNMI in agreement for an hour.
+- [ ] Build 5: gNMI discovery, a generated config that polls every port that is up.
+- [ ] Build 6: streaming, gate to be written.
+
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
@@ -402,3 +503,9 @@ of Release, builds both images without pushing.
   AK's behalf).
 - A code of conduct for contributors (the Contributor Covenant, for example), which would also
   complete GitHub's community profile with a pull request template.
+- Whether gNMI is part of the free program (proposed: yes; gNMI clients are common open source,
+  and the paid program's value is the analysis on top) or a paid add-on. A paid add-on could not
+  be built into LinkScope (it would be GPL); it would have to feed LinkScope from outside, as an
+  external-program target.
+- A contact email in the UI's footer, once rinjanianalytics.com receives mail (on 2026-10-22 it had
+  no MX record, so any address on it would bounce).
