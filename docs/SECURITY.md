@@ -60,3 +60,11 @@ alerts), with `cargo audit` and `npm audit`. Fixed:
 | A cached view keyed on a memory address could be stale after reloads (an out-of-bounds index, a new secret not redacted) | none (a latent bug) | the cache holds the configuration it was made for |
 | Unbounded expression and filter chains overflowed the stack; huge literals exhausted memory | the config, cfgmaker's operator | 1,000 parts at most; literals within 190 digits |
 | The costliest request (a graph's log summary) had no limit | anyone who reaches the UI | four at a time |
+| GET values were placed by position, so a stray or stale reply could put one interface's counter on another | a spoofed or late reply | values used only for the OID they name |
+| After a timeout the library reused the request id, so a late reply could answer the next request | a late or spoofed reply | the next request goes out from a new socket |
+| Walks counted values loosely and held five full walks; the `.ok` cache could grow to tens of MB per device | a polled device | 100,000 rows per walk with per-row cost, 8 MB of cache per device, rows turned into cache entries as each walk ends |
+| cfgmaker had no interface cap | a polled device | 50,000 interfaces at most |
+| sysName and uptime had no length cap | a polled device | 256 characters |
+| An EXEC target's background processes outlived it, one more each cycle | the command | its process group is ended when it finishes |
+| `PathAdd` with `PATH` unset put the current directory on the search path | the environment | `PathAdd` alone |
+| cfgmaker's header showed keys and communities | readers of the generated file | masked |

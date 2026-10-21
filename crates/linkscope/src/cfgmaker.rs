@@ -96,28 +96,63 @@ struct Parsed {
     fullcmd: String,
 }
 
+/// Options that take no value (every other `--option` takes one, inline or as the next word).
+fn flag_only(key: &str) -> bool {
+    matches!(
+        key,
+        "no-down" | "show-op-down" | "noreversedns" | "nointerfaces" | "interfaces" | "enable-ipv6" | "enablesnmpv3" | "help" | "version" | "use-16bit" | "nodefaultglobal"
+    )
+}
+
+/// Options whose value is a secret.
+fn secret_option(key: &str) -> bool {
+    matches!(key, "authpassword" | "privpassword" | "authkey" | "privkey" | "community")
+}
+
+/// The command line for the generated file's header, without its secrets: the values of the
+/// password, key and community options, and the community in front of each `community@router`.
+/// Arguments are read as `parse_args` reads them, so an option's value (a `--global` with an
+/// address in it) is never taken for a router.
 fn mask_secrets(args: &[String]) -> String {
     let mut out = Vec::new();
-    let mut hide_next = false;
-    for a in args {
-        if hide_next {
-            out.push("XXXXX".to_string());
-            hide_next = false;
-            continue;
-        }
-        let lower = a.to_lowercase();
-        if lower.starts_with("--authpassword") || lower.starts_with("--privpassword") {
-            if let Some((k, _)) = a.split_once('=') {
-                out.push(format!("{k}=XXXXX"));
-            } else {
-                out.push(a.clone());
-                hide_next = true;
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        if let Some(stripped) = a.strip_prefix("--") {
+            let (key, inline) = match stripped.split_once('=') {
+                Some((k, _)) => (k.to_lowercase(), true),
+                None => (stripped.to_lowercase(), false),
+            };
+            let hide = secret_option(&key);
+            match (inline, hide) {
+                (true, true) => out.push(format!("{}=XXXXX", a.split_once('=').map_or(a.as_str(), |(k, _)| k))),
+                _ => out.push(a.clone()),
             }
+            if !inline && !flag_only(&key) {
+                if let Some(v) = args.get(i + 1) {
+                    out.push(if hide { "XXXXX".to_string() } else { v.clone() });
+                    i += 1;
+                }
+            }
+        } else if let Some((_, router)) = a.rsplit_once('@') {
+            out.push(format!("XXXXX@{router}"));
         } else {
             out.push(a.clone());
         }
+        i += 1;
     }
     out.join(" ")
+}
+
+/// Most interfaces cfgmaker writes for one device. Each takes about 2 KB of configuration, and
+/// a device reporting a million would make one string of gigabytes.
+const MAX_INTERFACES: usize = 50_000;
+
+fn interface_count_ok(n: usize, who: &str) -> Result<(), String> {
+    if n > MAX_INTERFACES {
+        return Err(format!("{who} reports {n} interfaces, more than cfgmaker writes for one device ({MAX_INTERFACES}); check the device"));
+    }
+    Ok(())
 }
 
 fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
@@ -138,10 +173,7 @@ fn parse_args(args: &[String]) -> Result<Option<Parsed>, String> {
                 Some((k, v)) => (k.to_lowercase(), Some(v.to_string())),
                 None => (stripped.to_lowercase(), None),
             };
-            let takes_value = !matches!(
-                key.as_str(),
-                "no-down" | "show-op-down" | "noreversedns" | "nointerfaces" | "interfaces" | "enable-ipv6" | "enablesnmpv3" | "help" | "version" | "use-16bit" | "nodefaultglobal"
-            );
+            let takes_value = !flag_only(&key);
             let val = if takes_value {
                 match inline {
                     Some(v) => Some(v),
@@ -493,6 +525,8 @@ async fn discover(r: &RouterSpec, snmpopt: &str, enable_ipv6: bool, oids: &OidRe
         },
         &|i, k| i.eth = Some(k),
     );
+
+    interface_count_ok(ifs.len(), &ep.display())?;
 
     // Counter check (IsCounterBroken), batched.
     let idxs: Vec<u64> = ifs.keys().copied().collect();
@@ -976,6 +1010,22 @@ mod tests {
         assert_eq!(p.routers[0].globals, vec!["WorkDir: /x".to_string()]);
         assert!(p.routers[1].globals.is_empty());
         assert!(!p.fullcmd.contains("s3cret"));
+        // Keys, communities (as options and in front of a router) and inline values too; an option's
+        // value that holds an `@` is not a router.
+        let a: Vec<String> = [
+            "cfgmaker", "--authkey", "0xKEY1", "--privkey=0xKEY2", "--community", "comm1", "--community=comm2", "--global",
+            "ThreshMailAddress[_]: noc@example.com", "comm3@r1:::::2", "secret\\@x@r2",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let m = mask_secrets(&a[1..]);
+        for secret in ["0xKEY1", "0xKEY2", "comm1", "comm2", "comm3", "secret"] {
+            assert!(!m.contains(secret), "{secret} in {m}");
+        }
+        assert!(m.contains("noc@example.com") && m.contains("XXXXX@r1:::::2") && m.contains("XXXXX@r2"), "{m}");
+        assert!(interface_count_ok(MAX_INTERFACES, "r1").is_ok());
+        assert!(interface_count_ok(MAX_INTERFACES + 1, "r1").unwrap_err().contains("more than cfgmaker writes"));
         assert!(parse_args(&["cfgmaker".into(), "--if-template=x".into(), "r".into()]).is_err());
     }
 }
