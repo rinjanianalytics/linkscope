@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Releases LinkScope from a tag. To release:
+#   1. Bump the version in Cargo.toml (and Cargo.lock, compose.yaml, .env.example, the manual) and
+#      add its section to CHANGELOG.md ("## 0.3.0 (date)"); merge that.
+#   2. git tag -a v0.3.0 -m "LinkScope 0.3.0" && git push origin v0.3.0
+# The workflow then runs CI, pushes ghcr.io/rinjanianalytics/linkscope:<version> for linux/amd64
+# and linux/arm64 (and moves `latest`, except for a pre-release such as 0.3.0-rc.1), and last
+# creates the GitHub release from the changelog's section, so a release never names an image
+# that cannot be pulled.
+#
+# A pull request that changes the Dockerfile, and a manual run (Actions, Release, Run workflow),
+# build both images without pushing anything: a dry run.
+#
+# Docker steps are plain commands rather than third-party actions; the only actions are GitHub's
+# own, pinned by commit.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/rinjanianalytics/linkscope
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  ci:
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/ci.yml
+
+  dry-run:
+    name: Build both images (nothing pushed)
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Builder
+        run: docker buildx create --name ls --driver docker-container --use
+      - name: Build linux/amd64 and linux/arm64
+        run: docker buildx build --platform "$PLATFORMS" --progress plain .
+
+  publish:
+    name: Publish the image and the release
+    if: github.ref_type == 'tag'
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # the GitHub release
+      packages: write # the image
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Version, tag and changelog agree
+        id: v
+        run: |
+          set -eu
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but Cargo.toml says $version"; exit 1
+          fi
+          # The changelog's section for this version, up to the next version's heading.
+          awk -v v="$version" '
+            $0 ~ "^## " { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md has no section for $version"; exit 1
+          fi
+          cat >> "$RUNNER_TEMP/notes.md" <<EOF
+
+          ### Run it
+
+          \`\`\`sh
+          docker pull $IMAGE:$version   # amd64 and arm64
+          \`\`\`
+
+          With \`compose.yaml\` from this release: see the manual's "Install and run" page
+          (\`docs/manual/en/install.md\`, or \`/docs\` in the running UI).
+          EOF
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$pre"
+            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ github.token }}
+        run: echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push linux/amd64 and linux/arm64
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          CREATED: ${{ steps.v.outputs.created }}
+        run: |
+          set -eu
+          tags="-t $IMAGE:$VERSION"
+          if [ "$PRERELEASE" = false ]; then tags="$tags -t $IMAGE:latest"; fi
+          docker buildx create --name ls --driver docker-container --use
+          # $tags is split on purpose: one -t per tag.
+          docker buildx build --platform "$PLATFORMS" --progress plain \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.created=$CREATED" \
+            $tags --push .
+          docker buildx imagetools inspect "$IMAGE:$VERSION" | tee "$RUNNER_TEMP/inspect.txt"
+          for p in linux/amd64 linux/arm64; do
+            grep -q "Platform: *$p\$" "$RUNNER_TEMP/inspect.txt" || { echo "::error::no $p image"; exit 1; }
+          done
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.v.outputs.version }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
+        run: |
+          set -eu
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "The release $GITHUB_REF_NAME exists already; left as it is."
+            exit 0
+          fi
+          flags=""
+          if [ "$PRERELEASE" = true ]; then flags="--prerelease --latest=false"; fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "LinkScope $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" $flags
