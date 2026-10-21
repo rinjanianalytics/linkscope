@@ -274,14 +274,40 @@ published.
       binary is aarch64, needs only libc, libm and libgcc_s and glibc 2.34 (bookworm has 2.36); it
       could not be run on this amd64 host. A plain `docker build` on amd64 stays native.
 
+## 0.2.0, the first public release (AK, 2026-10-21)
+
+0.1.0 is the MRTG-compatible release this plan builds on; 0.2.0 adds builds 1 and 2, the manual,
+Docker, `async-snmp` and the security assessment's fixes, some of which change behavior, so it is
+a minor version (semantic versioning before 1.0). `CHANGELOG.md` lists what changed and, under
+"Upgrading from 0.1.0", every behavior change to check.
+
+- [x] 0.2.0 released and public.
+      2026-10-21:
+      - Release PR #15 (`c5b9c33`): the version is 0.2.0 everywhere, plus the changelog.
+      - Tags: `v0.1.0` on the first commit (`3158c73`), `v0.2.0` on `c5b9c33`. The GitHub release
+        v0.2.0 carries the changelog's notes.
+      - Image: `ghcr.io/rinjanianalytics/linkscope:0.2.0` and `latest`, one index for linux/amd64
+        and linux/arm64 (`sha256:7d9d05bc...`), built from a clean export of `v0.2.0`. The six
+        versions pushed earlier as `0.1.0` (today's code under the old number) were deleted.
+      - The lab runs 0.2.0 since 14:05 WIB: both CHR ports ok, `linkscope_info{version="0.2.0"}`.
+      - Public: the repository first, then the release, then the package (14:23 WIB), so a GPL
+        binary is never public without its source. Checked without a login: the repository
+        (license GPL-2.0), the release, and `docker pull` of `0.2.0` and `latest` (amd64 and arm64)
+        running as `linkscope 0.2.0`.
+
+Releasing again: bump the version, add a CHANGELOG entry (with "Upgrading" when behavior changes),
+tag, create a GitHub release, then push the image for both platforms from a clean export of the
+tag:
+`docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:<version> -t ...:latest --push`.
+There is no release pipeline yet, so this is done by hand.
+
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
-- When this repository goes public (it is private now), and with it whether the manual also
-  gets a public site (an mdBook build of `docs/manual`, for example on rinjanianalytics.com).
-- Making the image public (`ghcr.io/rinjanianalytics/linkscope`, published for amd64 and arm64,
-  private until now): together with the repository, since a GPL binary in public needs its source
-  in public. Package settings, Change visibility.
+- A release pipeline (GitHub Actions, free for a public repository) that tests, builds and pushes the
+  image for both platforms from a tag, instead of by hand.
+- Whether the manual also gets a public website (an mdBook build of `docs/manual`, for example on
+  rinjanianalytics.com). The repository is public, and GitHub already shows the pages.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
   installs that expose the UI and the metrics to different networks.
