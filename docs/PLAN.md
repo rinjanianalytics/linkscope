@@ -295,18 +295,23 @@ a minor version (semantic versioning before 1.0). `CHANGELOG.md` lists what chan
         (license GPL-2.0), the release, and `docker pull` of `0.2.0` and `latest` (amd64 and arm64)
         running as `linkscope 0.2.0`.
 
-Releasing again: bump the version, add a CHANGELOG entry (with "Upgrading" when behavior changes),
-tag, create a GitHub release, then push the image for both platforms from a clean export of the
-tag:
-`docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:<version> -t ...:latest --push`.
-There is no release pipeline yet, so this is done by hand.
+Releasing again (AK, 2026-10-21: a release pipeline in GitHub Actions):
+bump the version and add its CHANGELOG section (with "Upgrading" when behavior changes), merge,
+then push a tag `v<version>`. `.github/workflows/release.yml` runs CI, checks that the tag, the
+version and the changelog agree, pushes the image for linux/amd64 and linux/arm64 (and `latest`,
+except for a pre-release such as `0.3.0-rc.1`), and last creates the GitHub release from the
+changelog. `.github/workflows/ci.yml` checks every pull request and every push to main: clippy and
+the tests on Rust 1.92.0 (the image's), and a build on 1.88 (`rust-version`). A pull request that
+changes the Dockerfile, and a manual run of Release, builds both images without pushing.
+
+- [ ] The first release through the pipeline. Its first push to GHCR proves the repository's
+      Actions may write the package (Package settings, Manage Actions access, the repository
+      with the Write role).
 
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
 - A review of the free and paid split by someone who knows GPL licensing, before anything is sold.
-- A release pipeline (GitHub Actions, free for a public repository) that tests, builds and pushes the
-  image for both platforms from a tag, instead of by hand.
 - Whether the manual also gets a public website (an mdBook build of `docs/manual`, for example on
   rinjanianalytics.com). The repository is public, and GitHub already shows the pages.
 - `/metrics` on the UI's listener (simplest) or a listener of its own (`MetricsListen:`), for
