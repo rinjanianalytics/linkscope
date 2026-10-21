@@ -124,6 +124,14 @@ the derived parts, and anything built into the LinkScope program is GPL too. So:
       over an hour on the CHR's two busy directions; no interface exported named after 20 min,
       30 % of IPFIX dropped named as lost (-35.6 %) after 19 min, both cleared within 21 min.
 
+## The manual (AK, 2026-10-21)
+
+LinkScope had no documentation beyond the README. The manual is served by LinkScope itself at
+`/docs` (so it matches the installed version and works without internet access), in English and
+Bahasa (AK's choice), from Markdown in `docs/manual/<lang>/` in mdBook's layout, so a public site
+later is a build of the same pages. `crates/web/tests/docs.rs` holds it together: every page in
+both languages in the same order, every link between pages leading to a page and a heading.
+
 ## Open decisions
 
 - The paid program's name, and whether it starts as a license, SaaS or both.
