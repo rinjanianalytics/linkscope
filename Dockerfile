@@ -9,6 +9,7 @@
 # cross-compiles when the target differs; the final stage only copies files, so an image for the
 # other architecture needs no emulation:
 #   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:0.2.0 .
+# Releases are built and pushed by .github/workflows/release.yml from a version tag.
 
 FROM --platform=$BUILDPLATFORM rust:1.92.0-slim-bookworm AS build
 ARG TARGETARCH
