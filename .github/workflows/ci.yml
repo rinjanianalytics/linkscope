@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Checks every push to main and every pull request: clippy and the tests on the Rust the image
-# builds with, and a build on the oldest Rust LinkScope supports (rust-version in Cargo.toml).
+# Checks every push to main and every pull request: rustfmt, clippy and the tests on the Rust the
+# image builds with, and a build on the oldest Rust LinkScope supports (rust-version in Cargo.toml).
 # The release workflow runs it too before it publishes anything.
 #
 # Actions are pinned by commit; the comment names the release.
@@ -27,6 +27,21 @@ env:
   RUST_MSRV: "1.89"
 
 jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust ${{ env.RUST_VERSION }}
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component rustfmt
+          rustup default "$RUST_VERSION"
+      - name: Formatting
+        run: cargo fmt --all --check
+
   test:
     name: Clippy and tests
     runs-on: ubuntu-24.04
