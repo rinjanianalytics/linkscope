@@ -323,12 +323,23 @@ changes the Dockerfile, and a manual run of Release, builds both images without 
       PR #19: `cargo fmt --all` with Rust 1.92.0's rustfmt, default settings, in a commit of its
       own (`a54d2e8`, 47 files, formatting only: clippy clean, 114 tests pass), and a Rustfmt job
       in CI. `.git-blame-ignore-revs` lists the commit, so blame skips it (GitHub on its own; locally
-      `git config blame.ignoreRevsFile .git-blame-ignore-revs`).
+      `git config blame.ignoreRevsFile .git-blame-ignore-revs`). PR #20 added it; in
+      `crates/config/src/check.rs`, the lines blame gives to the formatting commit fell from 218 to 4.
 - [x] CI required before merging to main (2026-10-21).
       Branch protection on `main`: the checks Rustfmt, Clippy and tests, and Build on the oldest
       supported Rust must pass, for admins too; the branch need not be up to date with main first;
       no review required (one maintainer); no force pushes or deletion. The Release dry run is not
       required, since it runs only when the Docker files change.
+      - Each check must come from GitHub Actions (app 15368), so a status posted any other way
+        cannot stand in for it.
+      - Tested on PR #20 (`6abb285`): a merge while CI was queued was refused ("3 of 3 required
+        status checks are queued"); after the three passed, it merged.
+      - Tags are not affected: a release tag still starts the release workflow, which runs CI
+        itself before publishing.
+      - Renaming a CI job renames its check: change the protection in the same change, or every
+        pull request waits for a check that never comes (Settings, Branches, main).
+      - Nothing reaches main except through a pull request with green CI, admins included. To
+        change that in an emergency, turn off "Do not allow bypassing" there, and turn it back on.
 - [ ] The first release through the pipeline: its first push to GHCR with the repository's own
       token.
 
