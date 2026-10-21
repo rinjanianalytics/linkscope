@@ -14,7 +14,6 @@
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -420,15 +419,17 @@ impl Engine {
     }
 }
 
+/// A value as the expression reads it. Bounded: a device or a command chooses the text, and a
+/// value written with a huge exponent would cost gigabytes to align or print (MRTG drops it too).
 fn dec(v: &Option<String>) -> Option<BigDecimal> {
-    v.as_deref().and_then(|s| BigDecimal::from_str(s).ok())
+    v.as_deref().and_then(linkscope_config::expr::bounded_decimal)
 }
 
 /// MRTG's compensation for agents that report counters as negative
 /// numbers: add 2^31.
 fn fix_negative(v: String) -> String {
     if v.starts_with('-') {
-        if let Ok(d) = BigDecimal::from_str(&v) {
+        if let Some(d) = linkscope_config::expr::bounded_decimal(&v) {
             let fixed = d + BigDecimal::from(1u64 << 31);
             return fixed.with_scale(0).to_string();
         }

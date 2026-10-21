@@ -318,7 +318,29 @@ impl Session {
     }
 
     async fn exchange(&mut self, req: &Req<'_>) -> Result<Resp, SnmpError> {
-        self.ensure_init().await?;
+        let (res, rejected) = self.exchange_once(req).await;
+        match res {
+            // The v3 library sets a session's engine boots and time from a reply before it has
+            // checked the reply's authentication, so one forged datagram can make every genuine
+            // reply fail from then on. When replies came but were refused, or authentication
+            // failed, start over once: a new socket (a new port to guess) and a fresh discovery.
+            // Plain timeouts (the device is down) do not reopen it.
+            Err(e) if self.ep.version == SnmpVersion::V3 && (rejected || matches!(e, SnmpError::V3(_))) => {
+                tracing::debug!("SNMPv3 session for {} reopened after: {e}", self.ep.display());
+                let ep = self.ep.clone();
+                *self = Session::open(&ep).await?;
+                self.exchange_once(req).await.0
+            }
+            r => r,
+        }
+    }
+
+    /// One request with its retries. Also says whether a reply arrived but was refused.
+    async fn exchange_once(&mut self, req: &Req<'_>) -> (Result<Resp, SnmpError>, bool) {
+        if let Err(e) = self.ensure_init().await {
+            return (Err(e), false);
+        }
+        let mut rejected = false;
         let mut t = self.ep.timeout;
         let mut attempts = 0;
         let mut resyncs = 0;
@@ -342,8 +364,11 @@ impl Session {
                     varbinds: p.varbinds.by_ref().map(|(o, v)| (o.to_id_string(), Val::from_value(&v))).collect(),
                 })
             };
-            match tokio::time::timeout(t, fut).await {
-                Ok(Ok(r)) => return Ok(r),
+            let outcome = tokio::time::timeout(t, fut).await;
+            // A reply that came but was refused, not a silence.
+            let refused = matches!(&outcome, Ok(Err(_)));
+            match outcome {
+                Ok(Ok(r)) => return (Ok(r), rejected),
                 Ok(Err(snmp2::Error::AuthUpdated)) if resyncs < 3 => {
                     // v3 time window or engine boots changed; the security
                     // state is updated, so simply repeat the request.
@@ -351,12 +376,13 @@ impl Session {
                     continue;
                 }
                 Ok(Err(e @ snmp2::Error::AuthFailure(_))) => {
-                    return Err(SnmpError::V3(format!("{e} ({})", self.ep.display())));
+                    return (Err(SnmpError::V3(format!("{e} ({})", self.ep.display()))), true);
                 }
                 Ok(Err(_)) | Err(_) => {
+                    rejected |= refused;
                     attempts += 1;
                     if attempts > self.ep.retries {
-                        return Err(SnmpError::Timeout(self.ep.display()));
+                        return (Err(SnmpError::Timeout(self.ep.display())), rejected);
                     }
                     t = next_timeout(t, self.ep.backoff);
                 }

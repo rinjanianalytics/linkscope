@@ -153,6 +153,10 @@ impl Expr {
     /// rate engine.
     pub fn eval_value(&self, get: &dyn Fn(usize) -> Option<BigDecimal>) -> Result<String, EvalError> {
         let v = self.eval(get)?;
+        // Judged before it is printed: `1e999999999` prints as a billion digits.
+        if !within_width(&v) {
+            return Err(EvalError::NotANumber);
+        }
         let plain = v.to_plain_string();
         if plain.len() > 190 {
             return Err(EvalError::NotANumber);
@@ -161,6 +165,24 @@ impl Expr {
         let (digits, _) = r.as_bigint_and_exponent();
         Ok(digits.to_string())
     }
+}
+
+/// The widest value MRTG keeps: `getcurrent` rejects one that prints longer than 190 characters.
+pub const MAX_WIDTH: i64 = 190;
+
+/// Whether `v` prints in at most [`MAX_WIDTH`] digits on either side of the point, judged from
+/// its digits and exponent without printing it. A value from a device or a command can be
+/// written with an exponent (`1e999999999` passes MRTG's number check), and printing or aligning
+/// it would take gigabytes; anything this wide MRTG rejects anyway.
+pub fn within_width(v: &BigDecimal) -> bool {
+    let (_, scale) = v.as_bigint_and_exponent();
+    let digits = i64::try_from(v.digits()).unwrap_or(i64::MAX);
+    scale.unsigned_abs() <= MAX_WIDTH as u64 && digits.saturating_sub(scale) <= MAX_WIDTH
+}
+
+/// A value read from a device or a command, if it is a decimal within [`MAX_WIDTH`].
+pub fn bounded_decimal(s: &str) -> Option<BigDecimal> {
+    BigDecimal::from_str(s).ok().filter(within_width)
 }
 
 fn pow(x: &BigDecimal, y: &BigDecimal) -> Result<BigDecimal, EvalError> {
@@ -309,6 +331,9 @@ fn lex_number(s: &str) -> Result<(BigDecimal, usize), String> {
         return radix_lit(1, 8, |c| (b'0'..=b'7').contains(&c));
     }
     let n = BigDecimal::from_str(&text).map_err(|_| format!("bad number '{text}'"))?;
+    if !within_width(&n) {
+        return Err(format!("number '{text}' is wider than {MAX_WIDTH} digits"));
+    }
     Ok((n, j))
 }
 
@@ -432,6 +457,21 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_value_is_judged_by_its_width_without_printing_it() {
+        // MRTG's number check lets an exponent through (its `.` is unescaped); the width decides.
+        for ok in ["0", "123", "1e5", "-1e5", "18446744073709551615", "0.5", &"9".repeat(190)] {
+            assert!(bounded_decimal(ok).is_some(), "{ok}");
+        }
+        for wide in ["1e999999999", "-1e999999999", "1e-999999999", "1e191", &"9".repeat(191), "1e99999999999999"] {
+            assert!(bounded_decimal(wide).is_none(), "{wide}");
+        }
+        // A literal that wide is refused when the config is read; a wide result is no number.
+        assert!(Expr::compile("1e999999999").is_err());
+        assert_eq!(ev(" $target->[0]{$mode} * $target->[0]{$mode} ", &["1e150"]), Err(EvalError::NotANumber));
+        assert_eq!(ev(" $target->[0]{$mode} * 8", &["1e5"]).unwrap(), "800000");
+    }
 
     fn ev(s: &str, vals: &[&str]) -> Result<String, EvalError> {
         let e = Expr::compile(s).unwrap();
