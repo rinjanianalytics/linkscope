@@ -406,17 +406,20 @@ counters, so the `.log` files, rates, alerts, `/metrics`, the API and the UI wor
 A target may even combine an SNMP and a gNMI source in one expression, as MRTG combines sources
 today.
 
-**Config** (proposed; the exact syntax is settled in build 4's PR):
+**Config** (as built in build 4; the proposal had a `GnmiDevice[name]:` line, but any
+`Keyword[name]:` line makes `name` a target in MRTG's grammar, so the device's settings moved to a
+per-target keyword, as `SnmpOptions[]` does):
 
 ```
-GnmiDevice[srl1]: address=10.10.0.80:57400 user=linkscope password-file=/etc/linkscope/srl1.pass
-                  ca=/etc/linkscope/lab-ca.pem
-Target[srl1_e1-1]: gnmi:ethernet-1/1@srl1
+GnmiOptions[_]: user=linkscope password-file=/etc/linkscope/srl1.pass ca=/etc/linkscope/lab-ca.pem
+Target[srl1_e1-1]: gnmi:ethernet-1/1@srl1:57400
 MaxBytes[srl1_e1-1]: 1250000000
 ```
 
-- `gnmi:<interface>@<device>` is read only when `<device>` is a declared `GnmiDevice`, before
-  MRTG's own passes. A config without `GnmiDevice` parses exactly as before (ground rule 1).
+- `gnmi:<interface>@<host>[:port]` is read in a pass of its own, after MRTG's backtick pass and
+  before its SNMP passes, so an interface name such as `xe-0/0/0:1` is never read as
+  `if:community@host`. MRTG rejects such a token, so no MRTG config is read differently
+  (ground rule 1). The port defaults to 9339, gNMI's registered port.
 - TLS is on by default and the server's certificate is checked. `insecure` exists for labs but
   must be written out, and the UI shows it on the target.
 - The password comes from a file or an environment variable, never inline. Client certificates
@@ -445,7 +448,7 @@ OpenConfig interface counters; it should work but has not been run.
 
 | Platform | gNMI | LinkScope |
 |---|---|---|
-| Nokia SR Linux | yes, OpenConfig and native | tested in build 4's gate |
+| Nokia SR Linux | yes, OpenConfig and native | tested: 26.7.2, both models (build 4's gate) |
 | Arista EOS | yes, OpenConfig | by spec; cEOS-lab could be tested (needs an Arista account) |
 | Cisco IOS XR, IOS XE, NX-OS | yes, OpenConfig | by spec |
 | Juniper Junos, Junos Evolved | yes, OpenConfig | by spec |
@@ -453,7 +456,7 @@ OpenConfig interface counters; it should work but has not been run.
 | Huawei VRP | on some models | by spec, per model |
 | MikroTik RouterOS | no | SNMP, as today |
 
-4. **gNMI targets.** `GnmiDevice[]` and `gnmi:` targets, read once per cycle with a gNMI `Get`
+4. **gNMI targets.** `GnmiOptions[]` and `gnmi:` targets, read once per cycle with a gNMI `Get`
    (or a `Subscribe` in `ONCE` mode where a device has no `Get` for state). One connection per
    device, reused across cycles, inside the same per-agent time budget as SNMP, so a slow
    device delays nobody else. Errors are named on the target: refused, TLS (with the reason),
@@ -472,15 +475,59 @@ OpenConfig interface counters; it should work but has not been run.
      extended);
    - every existing test passes, and a config without the new keywords writes the same `.log`
      files as before.
+
+   Done 2026-10-22 (`testenv/gate-gnmi.py --minutes 60`, 07:20 to 08:21 WIB, PR #40), on
+   `testenv/gnmi`: two SR Linux 26.7.2 routers under plain Docker Compose, srl1 with OpenConfig
+   on and srl2 native only, about 2.1 Mbit/s one way and 210 kbit/s back across both. A
+   LinkScope of the gate's own read srl1 ethernet-1/1 three ways (SNMP 64-bit, gNMI OpenConfig,
+   gNMI native) and srl2 ethernet-1/2 two ways (SNMP, gNMI native), plus three targets that must
+   fail. 13 polls, 167 checks, all passed:
+   - every poll's gNMI counters equal the SNMP ones, 0 bytes apart in all 72 comparisons (the gate
+     allowed 25 s of traffic, for SR Linux's SNMP refresh; it was never needed);
+   - over the hour, 2092.1 kbit/s in and 209.3 out by gNMI and by SNMP on srl1, 209.3 and 2092.2
+     on srl2: +0.000 % on every direction and both models;
+   - each poll named `login refused (wrong user or password)`,
+     `TLS: invalid peer certificate: UnknownIssuer` and `No route to host`, and the cycle took
+     3.07 to 3.13 s for all eight targets (the missing device's timeout; the others ran beside
+     it);
+   - no password, community or credential file path in `/metrics`, the API or the log.
+
+   Before it: the workspace tests (15 new against the mock: TLS, login, every encoding, no `Get`,
+   containers, origins, unknown interfaces, a gateway's `target=`), clippy and rustfmt 1.99, and
+   `no_secrets.rs` with a gNMI target. `tls=insecure` and `tls=off` load only when written out,
+   with a warning, and the target page shows them. Not run: `parity.sh` (no MRTG, `rateup`,
+   snmpsim or faketime on this host); the `.log` writer is unchanged and `thresh_mrtg.rs` passes.
+   Found on SR Linux, and handled:
+   - OpenConfig paths need the origin `openconfig` (its default model is its own): LinkScope sends
+     it, and drops it for devices that refuse it, remembering per connection;
+   - an interface that does not exist is an empty answer, not an error: that target alone fails,
+     "no ... counter in the answer";
+   - with OpenConfig off, an OpenConfig path answers `UNAVAILABLE`; discovery then tries the
+     native model;
+   - plain JSON is refused (JSON_IETF and PROTO are offered): LinkScope picks from
+     `Capabilities`;
+   - the gNMI server allows 60 requests a minute per router, all clients together: LinkScope
+     sends two or three per device per cycle, and splits a refused request per interface for at
+     most 24 interfaces.
+   The release binary grew from 19.9 MB (0.2.1) to 22.9 MB; the new crates need Rust 1.88 at most,
+   so the minimum stays 1.89. `prost` is Apache-2.0 only, like `ring`.
 5. **Discovery.** `linkscope cfgmaker` learns gNMI: given a device, it reads its interfaces (name,
    description, state, speed), checks which model answers (OpenConfig, else the vendor's), and
-   writes the `GnmiDevice[]` and one target per interface, with `MaxBytes` from the speed, as it
+   writes one target per interface with its `GnmiOptions[]`, with `MaxBytes` from the speed, as it
    does for SNMP. A mock gNMI server in `crates/mockagent` replays recorded answers, so every
    model's paths are tested in CI without a router.
 
    Gate: on SR Linux, the generated config polls every port that is up in its first cycle, with
    the right `MaxBytes`. Against the mock, the OpenConfig and SR Linux models both produce
    targets; a device answering neither is named, not skipped silently.
+
+   Done 2026-10-22 (`linkscope cfgmaker --gnmi`, both lab routers in one run, 0.5 s): srl1 found
+   as OpenConfig and srl2 as SR Linux's model (its OpenConfig answered `UNAVAILABLE`), 59
+   interfaces each; the 3 up on each (ethernet-1/1, ethernet-1/2, mgmt0) written as targets with
+   `MaxBytes` from the port speed (25G and 1G), the 56 down ones commented out, ifIndex 32768 and
+   32770 as SNMP reports them. The generated config loaded without a warning and all 6 targets
+   polled ok in the first cycle. Against the mock: an SR Linux device found after OpenConfig was
+   refused, and a device answering no model named with what each model said.
 6. **Streaming (later, after 0.3.0).** A `Subscribe` in `SAMPLE` mode, every 10 s for example,
    keeps a live rate per gNMI target for the UI and `/metrics`, while the `.log` files still get
    one value per cycle as MRTG writes them. Planned only after builds 4 and 5 run on a real
@@ -490,8 +537,12 @@ OpenConfig interface counters; it should work but has not been run.
 
 Builds 4 and 5 ship together as 0.3.0.
 
-- [ ] Build 4: gNMI targets, SR Linux read by SNMP and gNMI in agreement for an hour.
-- [ ] Build 5: gNMI discovery, a generated config that polls every port that is up.
+- [x] Build 4: gNMI targets, SR Linux read by SNMP and gNMI in agreement for an hour.
+      2026-10-22: 13 polls, gNMI and SNMP counters 0 bytes apart every time, rates equal over
+      the hour on both routers and both models, three failures named, no secret in any output.
+- [x] Build 5: gNMI discovery, a generated config that polls every port that is up.
+      2026-10-22: both routers' models found, 6 up ports written and polled ok in the first
+      cycle, 112 down ports commented out.
 - [ ] Build 6: streaming, gate to be written.
 
 ## Open decisions
