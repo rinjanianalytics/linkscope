@@ -55,7 +55,7 @@ Every one has a default, so the file is optional. SNMP settings stay in `mrtg.cf
 |---|---|---|
 | `LINKSCOPE_LISTEN` | `127.0.0.1:8080` | Where the UI, the JSON API and `/metrics` are published on the host |
 | `LINKSCOPE_CONFIG` | `./mrtg.cfg` | The configuration file on the host |
-| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.2.1` | The image to run |
+| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.3.0` | The image to run |
 | `CARGO_BUILD_JOBS` | `4` | Cargo jobs when the image is built here |
 
 The UI has no login. To open it from your management network, set `LINKSCOPE_LISTEN` to an address

@@ -3,7 +3,18 @@
 LinkScope follows [semantic versioning](https://semver.org/); before 1.0, a minor version may change
 behavior, and every such change is listed under "Upgrading".
 
-## Unreleased
+## 0.3.0 (2026-10-22)
+
+LinkScope reads routers over gNMI as well as SNMP, so it covers the platforms that publish their
+counters that way (Arista, Cisco, Juniper, Nokia and others). gNMI was tested on Nokia SR Linux
+26.7.2, with OpenConfig and with SR Linux's own model: over an hour its counters equaled SNMP's
+on every poll. MRTG compatibility holds: configs without gNMI targets are read and logged exactly
+as before.
+
+### Upgrading from 0.2.1
+
+Nothing to change. gNMI is used only by targets written as `gnmi:<interface>@<host>`, with
+`GnmiOptions[]`. The target page gains a "Read by" line.
 
 ### Added
 

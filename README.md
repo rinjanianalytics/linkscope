@@ -154,7 +154,7 @@ The webhook body:
   "direction": "in", "bound": "max", "threshold": "80%",
   "threshold_rate": 100000.0, "rate": 107750.0, "percent": 86.2,
   "polls": 3, "since": 1760940000, "time": 1760940600,
-  "description": null, "linkscope": "0.2.1"
+  "description": null, "linkscope": "0.3.0"
 }
 ```
 
