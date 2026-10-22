@@ -6,6 +6,7 @@
 - [Command line](command-line.md)
 - [Configuration](configuration.md)
 - [cfgmaker](cfgmaker.md)
+- [gNMI devices](gnmi.md)
 - [Web UI](web-ui.md)
 - [Prometheus metrics](metrics.md)
 - [Alerts](alerts.md)
