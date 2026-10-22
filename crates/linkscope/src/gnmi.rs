@@ -964,17 +964,14 @@ pub fn speed_bps(text: &str) -> Option<u64> {
     let t = bare(text).trim().to_ascii_uppercase();
     let t = t.strip_prefix("SPEED_").unwrap_or(&t);
     let t = t.strip_suffix('B').unwrap_or(t);
-    let (num, mult) = if let Some(n) = t.strip_suffix('T') {
-        (n, 1_000_000_000_000)
-    } else if let Some(n) = t.strip_suffix('G') {
-        (n, 1_000_000_000)
-    } else if let Some(n) = t.strip_suffix('M') {
-        (n, 1_000_000)
-    } else if let Some(n) = t.strip_suffix('K') {
-        (n, 1_000)
-    } else {
-        return None;
-    };
+    let (num, mult) = [
+        ('T', 1_000_000_000_000),
+        ('G', 1_000_000_000),
+        ('M', 1_000_000),
+        ('K', 1_000),
+    ]
+    .into_iter()
+    .find_map(|(unit, mult)| t.strip_suffix(unit).map(|n| (n, mult)))?;
     num.parse::<u64>().ok()?.checked_mul(mult)
 }
 
