@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use regex::bytes::Regex;
 use serde::Serialize;
 
+use crate::gnmi::{GnmiOptions, GnmiSource};
 use crate::perlhash::SnmpOptions;
 
 /// How an SNMP source selects its interface (MRTG's `IfSel`).
@@ -178,6 +179,8 @@ pub struct ExecSource {
 pub enum Source {
     Snmp(SnmpSource),
     Exec(ExecSource),
+    /// A LinkScope addition: one interface of a gNMI device.
+    Gnmi(GnmiSource),
 }
 
 /// Shared state of the parser across all targets of a config (MRTG's
@@ -267,6 +270,7 @@ impl SourceTable {
         ipv4only: bool,
         snmp_options: &SnmpOptions,
         nohc: bool,
+        gnmi_options: &GnmiOptions,
     ) -> Result<ParsedTarget, String> {
         let pats = patterns();
         let mut string = target.to_string();
@@ -294,6 +298,43 @@ impl SourceTable {
                         command: t.replace("\\`", "`"),
                     }));
                     self.index.insert(t.clone(), i);
+                    i
+                }
+            };
+            parsed.push_str(&pre);
+            parsed.push_str(&placeholder(idx));
+            string = post;
+            note(idx, &mut unique);
+        }
+        string = std::mem::take(&mut parsed) + &string;
+
+        // Pass 1b (LinkScope): gnmi:<interface>@<host>[:port]. Before MRTG's SNMP passes, so an
+        // interface name such as `xe-0/0/0:1` is never read as `if:community@host`. MRTG itself
+        // rejects such a token, so no MRTG config is read differently.
+        while let Some(c) = crate::gnmi::pattern().captures(string.as_bytes()) {
+            let pre = cap(&c, 1).unwrap_or_default();
+            let t = cap(&c, 2).unwrap_or_default();
+            let post = cap(&c, 7).unwrap_or_default();
+            let port = match cap(&c, 6) {
+                None => crate::gnmi::DEFAULT_PORT,
+                Some(p) => match p.parse::<u16>() {
+                    Ok(n) if n > 0 => n,
+                    _ => return Err(format!("{t}: the port must be 1 to 65535")),
+                },
+            };
+            // The same token with other options is another source.
+            let key = format!("{t}|{gnmi_options:?}");
+            let idx = match self.index.get(&key) {
+                Some(&i) => i,
+                None => {
+                    let i = self.sources.len();
+                    self.sources.push(Source::Gnmi(GnmiSource {
+                        interface: cap(&c, 3).unwrap_or_default(),
+                        host: cap(&c, 4).or_else(|| cap(&c, 5)).unwrap_or_default(),
+                        port,
+                        options: gnmi_options.clone(),
+                    }));
+                    self.index.insert(key, i);
                     i
                 }
             };
@@ -522,8 +563,58 @@ mod tests {
 
     fn parse(t: &str) -> (SourceTable, ParsedTarget) {
         let mut st = SourceTable::default();
-        let p = st.parse(t, true, &SnmpOptions::new(), false).unwrap();
+        let p = st
+            .parse(t, true, &SnmpOptions::new(), false, &GnmiOptions::default())
+            .unwrap();
         (st, p)
+    }
+
+    #[test]
+    fn gnmi_targets() {
+        let (st, p) = parse("gnmi:ethernet-1/1@srl1:57400");
+        assert_eq!(p.rewritten, " $target->[0]{$mode} ");
+        assert_eq!(p.unique, Some(0));
+        let Source::Gnmi(g) = &st.sources[0] else {
+            panic!()
+        };
+        assert_eq!(
+            (g.interface.as_str(), g.host.as_str(), g.port),
+            ("ethernet-1/1", "srl1", 57400)
+        );
+
+        // The default port, an IPv6 host, and a colon in the interface name that MRTG's simple
+        // pattern would otherwise read as `if:community@host`.
+        let (st, _) = parse("gnmi:xe-0/0/0:1@[2001:db8::1]");
+        let Source::Gnmi(g) = &st.sources[0] else {
+            panic!()
+        };
+        assert_eq!(
+            (g.interface.as_str(), g.host.as_str(), g.port),
+            ("xe-0/0/0:1", "[2001:db8::1]", 9339)
+        );
+
+        // Mixed with SNMP and arithmetic: three sources, the gNMI one counted once.
+        let (st, p) = parse("gnmi:e1@r1 + 2:public@r2 + gnmi:e1@r1 * 8");
+        assert_eq!(st.sources.len(), 2);
+        assert!(matches!(st.sources[0], Source::Gnmi(_)));
+        assert!(matches!(st.sources[1], Source::Snmp(_)));
+        assert_eq!(p.unique, None);
+        assert_eq!(
+            p.rewritten,
+            " $target->[0]{$mode}  +  $target->[1]{$mode}  +  $target->[0]{$mode}  * 8"
+        );
+
+        let mut st = SourceTable::default();
+        assert!(
+            st.parse(
+                "gnmi:e1@r1:99999",
+                true,
+                &SnmpOptions::new(),
+                false,
+                &GnmiOptions::default()
+            )
+            .is_err()
+        );
     }
 
     #[test]

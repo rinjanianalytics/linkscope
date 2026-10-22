@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/rate", "crates/config", "crates/mockagent", "crates/web", "crates/linkscope"]
+members = ["crates/rate", "crates/config", "crates/gnmi", "crates/mockagent", "crates/web", "crates/linkscope"]
 
 [workspace.package]
 version = "0.2.1"

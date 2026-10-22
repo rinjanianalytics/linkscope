@@ -225,6 +225,11 @@ pub fn validate(key: &str, per_target: bool, v: &str) -> Result<(), String> {
         | ("pngtitle", true) | ("ylegend", true) | ("shortlegend", true) | ("legend1", true)
         | ("legend2", true) | ("legend3", true) | ("legend4", true) | ("legend5", true)
         | ("legendi", true) | ("legendo", true) | ("timestrfmt", true) => rule!(true, String::new()),
+        // Its messages name keys only, never a value.
+        ("gnmioptions", true) => rule!(
+            crate::gnmi::GnmiOptions::parse(v).is_ok(),
+            crate::gnmi::GnmiOptions::parse(v).err().unwrap_or_default()
+        ),
         ("nohc", true) | ("ipv4only", true) => rule!(yes_no(v), format!("{v} must be yes or no")),
         ("maxbytes", true) => rule!(pos_int(v), format!("{v} must be a Number bigger than 0")),
         ("maxbytes1", true) => rule!(pos_int(v), format!("{v} must be numerical and larger than 0")),

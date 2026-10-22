@@ -720,13 +720,23 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
         let ipv4only =
             !enable_ipv6 || get("ipv4only").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
         let nohc = get("nohc").is_some_and(|v| v.eq_ignore_ascii_case("yes"));
+        let gnmi_options = match get("gnmioptions") {
+            Some(g) => match crate::gnmi::GnmiOptions::parse(&g) {
+                Ok(o) => o,
+                Err(e) => {
+                    err(format!("GnmiOptions: {e}"));
+                    continue;
+                }
+            },
+            None => crate::gnmi::GnmiOptions::default(),
+        };
         let target_text = get("target");
         let (rewritten, expr, unique_source) = match &target_text {
             None => {
                 err(format!("I can't find a \"target[{name}]\" definition"));
                 (String::new(), Expr::Num(0.into()), None)
             }
-            Some(t) => match table.parse(t, ipv4only, &t_snmp_options, nohc) {
+            Some(t) => match table.parse(t, ipv4only, &t_snmp_options, nohc, &gnmi_options) {
                 Err(e) => {
                     err(format!("Target: {e}"));
                     (String::new(), Expr::Num(0.into()), None)
@@ -938,6 +948,49 @@ pub fn check(raw: RawConfig, opts: &CheckOptions) -> Result<Config, ConfigError>
                         "data source {i} ({}) uses SNMPv3 but its SnmpOptions has no username",
                         s.host
                     ));
+                }
+            }
+            Source::Gnmi(g) => {
+                let who = format!("gnmi:{}@{}", g.interface, g.address());
+                let o = &g.options;
+                for (what, path) in [
+                    ("password-file", &o.password_file),
+                    ("ca", &o.ca),
+                    ("cert", &o.cert),
+                    ("key", &o.key),
+                ] {
+                    if let Some(p) = path
+                        && std::fs::File::open(p).is_err()
+                    {
+                        errors.push(format!(
+                            "data source {i} ({who}): cannot read its {what}= file"
+                        ));
+                    }
+                }
+                if let Some(p) = &o.password_file
+                    && let Ok(m) = std::fs::metadata(p)
+                    && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o077 != 0
+                {
+                    warnings.push(format!(
+                        "{who}: its password-file= can be read by other accounts (chmod 600 it)"
+                    ));
+                }
+                if let Some(var) = &o.password_env
+                    && std::env::var_os(var).is_none()
+                {
+                    errors.push(format!(
+                        "data source {i} ({who}): environment variable {var} (password-env=) is not set"
+                    ));
+                }
+                match o.tls {
+                    crate::gnmi::TlsMode::Verify => {}
+                    crate::gnmi::TlsMode::Insecure => warnings.push(format!(
+                        "{who} uses tls=insecure: the device's certificate is not checked"
+                    )),
+                    crate::gnmi::TlsMode::Off if o.has_password() => {
+                        warnings.push(format!("{who} uses tls=off: its password travels in clear"))
+                    }
+                    crate::gnmi::TlsMode::Off => warnings.push(format!("{who} uses tls=off")),
                 }
             }
             Source::Exec(e) => {

@@ -1,4 +1,4 @@
-import { ArrowLeft, BellRing, CircleX, Clock, Cpu, FileQuestion, Gauge, Network, Server } from 'lucide-react'
+import { ArrowLeft, BellRing, CircleX, Clock, Cpu, FileQuestion, Gauge, Network, Radio, Server } from 'lucide-react'
 import { Link } from 'wouter'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { HtmlContent, hasHtml } from '@/components/HtmlContent'
 import { PageHeader } from '@/components/PageHeader'
 import { PeriodGraph } from '@/components/PeriodGraph'
 import { StatusPill } from '@/components/StatusPill'
-import { api, ApiError, PERIODS, type TargetDetail } from '@/lib/api'
+import { api, ApiError, PERIODS, type SourceView, type TargetDetail } from '@/lib/api'
 import { formatAgo, formatDateTime, formatRate } from '@/lib/format'
 import { usePolling, useNow } from '@/lib/hooks'
 import { useEffect } from 'react'
@@ -169,6 +169,7 @@ function TargetInfo({ t }: { t: TargetDetail }) {
             : formatRate(t.max_bytes1, t.format),
       })
   }
+  items.push({ icon: <Radio aria-hidden />, label: 'Read by', value: <SourceText s={t.source} /> })
   items.push({
     icon: <Cpu aria-hidden />,
     label: 'Last poll',
@@ -192,4 +193,21 @@ function TargetInfo({ t }: { t: TargetDetail }) {
       </div>
     </dl>
   )
+}
+
+/** How the target is read. A gNMI connection whose certificate is not checked, or that has no
+ * TLS at all, is shown as a warning: the config chose it, but it should be seen. */
+function SourceText({ s }: { s: SourceView }) {
+  switch (s.kind) {
+    case 'snmp':
+      return <>SNMP</>
+    case 'exec':
+      return <>a program</>
+    case 'expression':
+      return <>several sources</>
+    case 'gnmi':
+      if (s.tls === 'insecure') return <span className="text-status-warn">gNMI, certificate not checked</span>
+      if (s.tls === 'off') return <span className="text-status-warn">gNMI without TLS</span>
+      return <>gNMI over TLS</>
+  }
 }

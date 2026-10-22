@@ -18,10 +18,17 @@ const SECRETS: &[&str] = &[
     "hooktoken-SECRET",
     "hmackey-SECRET",
     "mailpass-SECRET",
+    "gnmipass-SECRET",
 ];
 /// Not secrets, but the server's business on a UI without a login: where the threshold programs
 /// live (a program of the test's own, see below) and whom threshold mail goes to.
-const PRIVATE: &[&str] = &["thresh-hook-SECRET", "noc-private@example.com"];
+const PRIVATE: &[&str] = &[
+    "thresh-hook-SECRET",
+    "noc-private@example.com",
+    // Where the gNMI password and certificates are kept.
+    "gnmi-pass-PATHSECRET",
+    "gnmi-ca-PATHSECRET",
+];
 
 #[tokio::test]
 async fn api_never_returns_credentials() {
@@ -33,6 +40,16 @@ async fn api_never_returns_credentials() {
     let hook = dir.path().join("thresh-hook-SECRET");
     std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    // gNMI reads its password and CA from files, which must exist for the config to load.
+    let gnmi_pass = dir.path().join("gnmi-pass-PATHSECRET");
+    std::fs::write(&gnmi_pass, "gnmipass-SECRET\n").unwrap();
+    std::fs::set_permissions(
+        &gnmi_pass,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .unwrap();
+    let gnmi_ca = dir.path().join("gnmi-ca-PATHSECRET");
+    std::fs::write(&gnmi_ca, "not used by this test\n").unwrap();
     std::fs::write(
         &cfg_path,
         format!(
@@ -41,9 +58,12 @@ async fn api_never_returns_credentials() {
              AlertWebhook: https://hooks.example.com/t/hooktoken-SECRET\nAlertWebhookSecret: hmackey-SECRET-0123456789\n\
              Target[a]: 2:Comm-un1ty@router1 / 2\nTitle[a]: A\nMaxBytes[a]: 100\nThreshMaxI[a]: 30%\nThreshFor[a]: 2\nThreshMailAddress[a]: noc-private@example.com\nThreshProgI[a]: {}\n\
              Target[b]: 3:x@router2:::::3\nSnmpOptions[b]: username=>'u', authpassword=>'authpass-SECRET', privpassword=>'privpass-SECRET'\nTitle[b]: B\nMaxBytes[b]: 100\n\
-             Target[c]: `/usr/local/bin/probe --password=cmdSECRET`\nTitle[c]: C\nMaxBytes[c]: 100\n",
+             Target[c]: `/usr/local/bin/probe --password=cmdSECRET`\nTitle[c]: C\nMaxBytes[c]: 100\n\
+             Target[d]: gnmi:ethernet-1/1@srl1:57400\nGnmiOptions[d]: user=linkscope password-file={} ca={}\nTitle[d]: D\nMaxBytes[d]: 100\n",
             work.display(),
-            hook.display()
+            hook.display(),
+            gnmi_pass.display(),
+            gnmi_ca.display()
         ),
     )
     .unwrap();
@@ -72,6 +92,8 @@ async fn api_never_returns_credentials() {
     }
     st.warnings
         .push("warning mentioning Comm-un1ty and /usr/local/bin/probe --password=cmdSECRET".into());
+    st.warnings
+        .push("gNMI srl1:57400: the device said: bad password gnmipass-SECRET".into());
     st.warnings.push("posting to https://hooks.example.com/t/hooktoken-SECRET with hmackey-SECRET-0123456789 failed; mail login mailpass-SECRET refused".into());
     let state = Arc::new(RwLock::new(st));
     let app = linkscope_web::router(state);
@@ -81,6 +103,7 @@ async fn api_never_returns_credentials() {
         "/api/targets/a",
         "/api/targets/b",
         "/api/targets/c",
+        "/api/targets/d",
         "/metrics",
     ] {
         let res = app

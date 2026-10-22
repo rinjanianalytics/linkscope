@@ -139,8 +139,16 @@ impl Format {
 pub fn mask_communities(target: &str) -> String {
     use std::sync::LazyLock;
     static RE: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"(?:\\[@ ]|[^\s@:`&])+@").unwrap());
-    RE.replace_all(target, "•••@").into_owned()
+        LazyLock::new(|| regex::Regex::new(r"(gnmi:)?(?:\\[@ ]|[^\s@:`&])+@").unwrap());
+    // In `gnmi:<interface>@<host>` the part before @ is an interface name, not a community.
+    RE.replace_all(target, |c: &regex::Captures| {
+        if c.get(1).is_some() {
+            c[0].to_string()
+        } else {
+            "•••@".to_string()
+        }
+    })
+    .into_owned()
 }
 
 /// Per-config data computed once per configuration load: sanitized HTML
@@ -166,6 +174,17 @@ impl View {
                     }
                 }
                 linkscope_config::Source::Exec(e) => secrets.push(e.command.clone()),
+                // The password is not in the config, but a device could echo it in an error.
+                linkscope_config::Source::Gnmi(g) => {
+                    let o = &g.options;
+                    let pw = o
+                        .password_file
+                        .as_ref()
+                        .and_then(|f| std::fs::read_to_string(f).ok())
+                        .and_then(|t| t.lines().next().map(str::to_string))
+                        .or_else(|| o.password_env.as_ref().and_then(|v| std::env::var(v).ok()));
+                    secrets.extend(pw);
+                }
             }
         }
         // The webhook URL may carry a token; the secret and password are keys.
@@ -333,6 +352,8 @@ pub struct TargetDetail {
     #[serde(flatten)]
     pub row: TargetRow,
     pub target_text: String,
+    /// How the target is read.
+    pub source: SourceView,
     pub page_top_html: String,
     pub page_foot_html: String,
     pub y_legend: String,
@@ -355,6 +376,36 @@ pub struct TargetDetail {
     pub abs_max: u64,
     pub timezone: Option<String>,
     pub thresholds: ThresholdView,
+}
+
+/// How a target is read: `snmp`, `gnmi`, `exec` or `expression` (several sources), and for gNMI
+/// how the connection is protected (`verify`, `insecure` or `off`).
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceView {
+    pub kind: &'static str,
+    pub tls: Option<linkscope_config::TlsMode>,
+}
+
+fn source_view(cfg: &Config, t: &Target) -> SourceView {
+    use linkscope_config::Source;
+    match t.unique_source.and_then(|u| cfg.sources.get(u)) {
+        Some(Source::Snmp(_)) => SourceView {
+            kind: "snmp",
+            tls: None,
+        },
+        Some(Source::Exec(_)) => SourceView {
+            kind: "exec",
+            tls: None,
+        },
+        Some(Source::Gnmi(g)) => SourceView {
+            kind: "gnmi",
+            tls: Some(g.options.tls),
+        },
+        None => SourceView {
+            kind: "expression",
+            tls: None,
+        },
+    }
 }
 
 /// A target's thresholds as the UI may show them: the bounds and how long they must stay broken,
@@ -590,6 +641,7 @@ pub async fn target(
     Ok(Json(TargetDetail {
         row: row(&cfg, &view, ti, &st),
         target_text: view.redact(&t.target_text),
+        source: source_view(&cfg, t),
         page_top_html: t.page_top.as_deref().map(sanitize).unwrap_or_default(),
         page_foot_html: t.page_foot.as_deref().map(sanitize).unwrap_or_default(),
         y_legend: t.y_legend.clone().unwrap_or_default(),
@@ -736,6 +788,10 @@ mod tests {
         assert_eq!(
             mask_communities("ifInErrors.1&ifOutErrors.1:pub@h"),
             "ifInErrors.1&ifOutErrors.1:•••@h"
+        );
+        assert_eq!(
+            mask_communities("gnmi:ethernet-1/1@srl1:57400 + 2:pub@r2"),
+            "gnmi:ethernet-1/1@srl1:57400 + 2:•••@r2"
         );
     }
 

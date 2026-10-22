@@ -10,3 +10,4 @@ Dockerfile
 mrtg.cfg
 data
 *.tmp_*
+testenv/gnmi/generated

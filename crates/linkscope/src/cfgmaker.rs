@@ -58,7 +58,9 @@ Options (apply to the routers that follow them):
   --enable-ipv6           allow SNMP over IPv6
   --enablesnmpv3 --username=U --authprotocol=md5|sha|sha256 --authpassword=P
       --privprotocol=des|aes|aes256 --privpassword=P --contextname=C
-  --help, --version";
+  --help, --version
+
+For gNMI devices: cfgmaker --gnmi --help";
 
 #[derive(Debug, Clone, Default)]
 struct Opts {
@@ -394,7 +396,7 @@ pub fn html_escape(s: &str) -> String {
 }
 
 /// `fmi` from cfgmaker: human readable speed.
-fn fmi(number: u64, bits: bool) -> String {
+pub(crate) fn fmi(number: u64, bits: bool) -> String {
     let (n, short): (u64, [&str; 4]) = if bits {
         (number * 8, ["bits/s", "kbits/s", "Mbits/s", "Gbits/s"])
     } else {
@@ -1195,6 +1197,10 @@ async fn run(p: Parsed) -> Result<String, String> {
 
 /// Entry point; `args[0]` is the program name.
 pub fn main(args: Vec<String>) -> ExitCode {
+    // gNMI devices are discovered by a front end of their own (MRTG's options are SNMP's).
+    if args.iter().any(|a| a == "--gnmi") {
+        return crate::gnmi_cfgmaker::main(args);
+    }
     let parsed = match parse_args(&args) {
         Ok(Some(p)) => p,
         Ok(None) => {

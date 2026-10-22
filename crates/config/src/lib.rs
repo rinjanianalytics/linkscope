@@ -11,6 +11,7 @@
 
 pub mod check;
 pub mod expr;
+pub mod gnmi;
 pub mod perlhash;
 pub mod raw;
 pub mod rules;
@@ -21,6 +22,7 @@ use std::path::{Path, PathBuf};
 
 pub use check::{CheckOptions, Config, Global, Options, Target, Thresholds, check, create_dirs};
 pub use expr::{Dir, EvalError, Expr};
+pub use gnmi::{GnmiModel, GnmiOptions, GnmiSource, TlsMode};
 pub use perlhash::SnmpOptions;
 pub use raw::{RawConfig, ReadOptions, read_config};
 pub use target::{ExecSource, IfSel, SnmpConn, SnmpSource, SnmpVersion, Source};
