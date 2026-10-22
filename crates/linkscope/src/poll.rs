@@ -23,6 +23,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Semaphore;
 
 use crate::confcache::{ConfCache, mac_string, trim_ctl};
+use crate::gnmi::{DeviceKey, GnmiPool};
 use crate::oids::OidResolver;
 use crate::snmp::{Endpoint, SessionPool, SnmpError, Val};
 
@@ -46,6 +47,8 @@ pub struct Poller {
     pub cfg: Arc<Config>,
     pub oids: Arc<OidResolver>,
     pub pool: SessionPool,
+    /// gNMI connections, kept between cycles.
+    pub gnmi: GnmiPool,
     pub cache: Arc<Mutex<ConfCache>>,
     /// Maximum agents polled at the same time.
     pub concurrency: usize,
@@ -101,6 +104,8 @@ impl Poller {
 
         // Group SNMP sources by agent session parameters.
         let mut groups: HashMap<String, (Endpoint, Vec<(usize, SnmpSource)>)> = HashMap::new();
+        let mut devices: HashMap<DeviceKey, Vec<(usize, linkscope_config::GnmiSource)>> =
+            HashMap::new();
         let mut set = tokio::task::JoinSet::new();
         for (i, src) in self.cfg.sources.iter().enumerate() {
             match src {
@@ -118,6 +123,10 @@ impl Poller {
                     }
                     Err(e) => results[i].error = Some(e),
                 },
+                Source::Gnmi(g) => devices
+                    .entry(DeviceKey::of(g))
+                    .or_default()
+                    .push((i, g.clone())),
                 Source::Exec(e) => {
                     let sem = exec_sem.clone();
                     let cmd = e.command.clone();
@@ -174,6 +183,50 @@ impl Poller {
                 }
             });
         }
+        // gNMI devices share SNMP's limit on agents polled at once, and its time budget.
+        for (key, members) in devices {
+            let sem = snmp_sem.clone();
+            let pool = self.gnmi.clone();
+            let budget = self.agent_budget;
+            set.spawn(async move {
+                let _p = sem.acquire_owned().await;
+                let ids: Vec<usize> = members.iter().map(|(i, _)| *i).collect();
+                let who = key.display();
+                // Each request may take a third of the budget: a device that hangs fails in time.
+                let per_request = (budget / 3).max(Duration::from_secs(2));
+                match tokio::time::timeout(
+                    budget,
+                    crate::gnmi::poll_device(&pool, key.clone(), members, per_request),
+                )
+                .await
+                {
+                    Ok(r) => r,
+                    Err(_) => {
+                        pool_forget(&pool, &key);
+                        tracing::warn!(
+                            "gNMI {who} did not finish within {} s; its targets are unknown this cycle",
+                            budget.as_secs()
+                        );
+                        let msg = format!(
+                            "gNMI {who} took longer than {} s (skipped this cycle)",
+                            budget.as_secs()
+                        );
+                        ids.into_iter()
+                            .map(|i| {
+                                (
+                                    i,
+                                    SourceResult {
+                                        error: Some(msg.clone()),
+                                        time: now(),
+                                        ..Default::default()
+                                    },
+                                )
+                            })
+                            .collect()
+                    }
+                }
+            });
+        }
         while let Some(r) = set.join_next().await {
             match r {
                 Ok(v) => {
@@ -186,6 +239,11 @@ impl Poller {
         }
         results
     }
+}
+
+/// Drop a device's connection after a timeout, so the next cycle starts afresh.
+fn pool_forget(pool: &GnmiPool, key: &DeviceKey) {
+    pool.forget(key);
 }
 
 #[derive(Clone)]

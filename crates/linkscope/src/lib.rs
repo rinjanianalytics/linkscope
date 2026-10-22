@@ -15,6 +15,8 @@ pub mod cycle;
 pub mod daemon;
 pub mod filter;
 pub mod fsutil;
+pub mod gnmi;
+pub mod gnmi_cfgmaker;
 mod iftype_table;
 mod oid_table;
 pub mod oids;

@@ -227,6 +227,7 @@ impl Engine {
             cfg: cfg.clone(),
             oids,
             pool: SessionPool::default(),
+            gnmi: Default::default(),
             cache,
             concurrency: opts.concurrency,
             exec_concurrency: opts.exec_concurrency,
@@ -291,6 +292,8 @@ impl Engine {
     /// Take over `old`'s threshold actions, running and waiting, so a reload neither waits for them
     /// nor drops them. Waiting batches then run with this configuration's mail server and webhook.
     pub fn adopt(&mut self, mut old: Engine) {
+        // gNMI connections are keyed by device and options, so they stay valid across a reload.
+        self.poller.gnmi = old.poller.gnmi.clone();
         std::mem::swap(&mut self.actions, &mut old.actions);
         let mut waiting = std::mem::take(&mut old.waiting);
         waiting.append(&mut self.waiting);
@@ -499,7 +502,8 @@ impl Engine {
             }
             let unique_loc = t.unique_source.and_then(|u| match &self.cfg.sources[u] {
                 Source::Snmp(s) => Some(format!("{}@{}{}", s.community, s.host, s.snmp_info)),
-                Source::Exec(_) => None,
+                // RouterUptime[] and RouterName[] are SNMP reads; a gNMI target has its own.
+                Source::Exec(_) | Source::Gnmi(_) => None,
             });
             let mut uploc: Option<String> = None;
             if let Some(ru) = &t.router_uptime {

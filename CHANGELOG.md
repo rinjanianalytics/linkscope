@@ -5,6 +5,21 @@ behavior, and every such change is listed under "Upgrading".
 
 ## Unreleased
 
+### Added
+
+- **gNMI targets.** `Target[x]: gnmi:<interface>@<host>[:port]` reads an interface's in and out
+  octet counters over gNMI, beside SNMP, with its settings in `GnmiOptions[]` (user, password
+  from a file or an environment variable, TLS checked by default, mutual TLS, `model=openconfig`
+  or `srl`, a gateway's `target=`). The `.log` files, graphs, alerts, `/metrics` (`source="gnmi"`)
+  and the API work on them as on SNMP targets. A device without gNMI `Get` is read with a
+  `Subscribe` in `ONCE` mode; an unknown interface fails only its own target. See the manual's
+  "gNMI devices" page.
+- **`linkscope cfgmaker --gnmi`** writes a target per interface of gNMI devices, detecting the
+  model (OpenConfig, then SR Linux's) and taking `MaxBytes[]` from the port speed.
+- **`linkscope-mockagent gnmi`**, a pretend gNMI router for trying configs and for the tests.
+- The target page says how a target is read (SNMP, gNMI, a program), and warns when a gNMI
+  connection is not checked (`tls=insecure`) or not encrypted (`tls=off`).
+
 ### Changed
 
 - The web UI's footer carries the Rinjani Analytics mark and links to LinkScope on GitHub and to

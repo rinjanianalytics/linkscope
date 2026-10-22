@@ -107,8 +107,15 @@ export interface Thresholds {
   mail: boolean
 }
 
+/** How a target is read; for gNMI, how the connection is protected. */
+export interface SourceView {
+  kind: 'snmp' | 'gnmi' | 'exec' | 'expression'
+  tls: 'verify' | 'insecure' | 'off' | null
+}
+
 export interface TargetDetail extends TargetSummary {
   target_text: string
+  source: SourceView
   page_top_html: SanitizedHtml
   page_foot_html: SanitizedHtml
   y_legend: string

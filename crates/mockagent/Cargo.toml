@@ -4,8 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+description = "Test devices for LinkScope: a gNMI server that answers like an OpenConfig or SR Linux router"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "linkscope-mockagent"
+path = "src/main.rs"
 
 [dependencies]
+linkscope-gnmi = { path = "../gnmi" }
 tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tonic = { version = "0.14", default-features = false, features = ["server", "router", "codegen", "tls-ring"] }
+serde_json = "1"
 clap = { version = "4", features = ["derive"] }
-

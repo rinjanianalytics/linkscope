@@ -80,6 +80,7 @@ fn labels(cfg: &Config, view: &View, t: &Target, if_index: Option<&str>) -> Stri
             ("snmp", s.host.as_str(), r)
         }
         Some(Source::Exec(_)) => ("exec", "", String::new()),
+        Some(Source::Gnmi(g)) => ("gnmi", g.host.as_str(), g.interface.clone()),
         // Arithmetic over several sources: no single host or interface.
         None => ("expression", "", String::new()),
     };

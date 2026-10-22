@@ -1,0 +1,17 @@
+[package]
+name = "linkscope-gnmi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The gNMI protocol for LinkScope, generated from openconfig/gnmi's proto files"
+
+[dependencies]
+prost = "0.14"
+prost-types = "0.14"
+tonic = { version = "0.14", default-features = false, features = ["codegen"] }
+tonic-prost = "0.14"
+
+[build-dependencies]
+protox = "0.10"
+tonic-prost-build = { version = "0.14", default-features = false }

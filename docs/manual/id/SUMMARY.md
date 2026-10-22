@@ -6,6 +6,7 @@
 - [Baris perintah](command-line.md)
 - [Konfigurasi](configuration.md)
 - [cfgmaker](cfgmaker.md)
+- [Perangkat gNMI](gnmi.md)
 - [Antarmuka web](web-ui.md)
 - [Metrik Prometheus](metrics.md)
 - [Peringatan](alerts.md)

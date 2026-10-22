@@ -109,6 +109,8 @@ fn compare(cfg: &Path) -> Vec<String> {
     for (i, (p, r)) in psrc.iter().zip(&cfg.sources).enumerate() {
         let rj = match r {
             Source::Exec(e) => json!({"Methode": "EXEC", "Command": e.command}),
+            // MRTG has no gNMI: a parity corpus never holds one.
+            Source::Gnmi(g) => json!({"Methode": "GNMI", "Interface": g.interface}),
             Source::Snmp(s) => json!({
                 "Methode": "SNMP",
                 "Community": s.community,
