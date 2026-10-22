@@ -544,6 +544,21 @@ Builds 4 and 5 ship together as 0.3.0.
       2026-10-22: both routers' models found, 6 up ports written and polled ok in the first
       cycle, 112 down ports commented out.
 - [ ] Build 6: streaming, gate to be written.
+- [x] 0.3.0 released with builds 4 and 5 (2026-10-22: "cut 0.3.0 after the merge").
+      gNMI in #40 (`8dfcb09`), release PR #41 (`ac459a1`), tag `v0.3.0`, then `release.yml` from
+      01:36 to 01:44 UTC (8 min): CI's four checks, the image for amd64 and arm64
+      (`sha256:06bf1568...`, tags `0.3.0` and `latest`; `0.2.1` kept), the GitHub release from
+      the changelog, now the latest, and the image run on both platforms. Checked without a
+      login: both tags on one index, its labels (version 0.3.0, revision `ac459a1`), and
+      `linkscope 0.3.0` from a fresh pull.
+      The lab runs 0.3.0 since 08:41 WIB (built from the tag with Rust 1.99), reading three
+      routers: the CHR over SNMP as before, and the two SR Linux routers of `testenv/gnmi` over
+      gNMI (srl1 with OpenConfig, srl2 with its own model; their targets written by
+      `cfgmaker --gnmi`, the lab's own copies of the CA and password in `lab/gnmi/`). Its second
+      cycle: all 6 targets ok, 2095.7 kbit/s and 209.6 back on srl1's ports and 2088.7 and 209.0 on
+      srl2's, the lab's traffic as the gate measured it. The tailnet name answers and a foreign
+      Host is refused (421). Rollbacks: `target/release/linkscope.before-0.3.0` is 0.2.1, and
+      `lab/mrtg.cfg.before-gnmi` the config without the SR Linux targets.
 
 ## Open decisions
 
