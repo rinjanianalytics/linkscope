@@ -1,0 +1,120 @@
+# gNMI test lab: two Nokia SR Linux routers in a line, with traffic across both.
+#
+#   sender -- e1-1 [srl1] e1-2 -- e1-1 [srl2] e1-2 -- sink
+#   10.20.1.0/24          10.20.2.0/24          10.20.3.0/24
+#
+# Management on 10.20.0.0/24: srl1 10.20.0.11, srl2 10.20.0.12 (gNMI 57400, SNMP 161).
+# Start and stop with up.sh and down.sh; up.sh also loads the router configuration.
+#
+# SR Linux is run without containerlab, with the settings containerlab uses for it
+# (nodes/srl/srl.go): privileged, root, SRLINUX=1, a topology file at /tmp/topology.yml
+# and a tmpfs on /run/netns. The container's data ports are named e1-1 and e1-2 with
+# interface_name, which SR Linux maps to ethernet-1/1 and ethernet-1/2.
+name: linkscope-gnmi
+
+x-srl: &srl
+  image: ghcr.io/nokia/srlinux:26.7.2
+  privileged: true
+  user: "0:0"
+  command: sudo -E bash -c 'touch /.dockerenv && /opt/srlinux/bin/sr_linux'
+  environment:
+    SRLINUX: "1"
+  sysctls:
+    net.ipv4.ip_forward: "0"
+    net.ipv6.conf.all.disable_ipv6: "0"
+    net.ipv6.conf.all.accept_dad: "0"
+    net.ipv6.conf.default.accept_dad: "0"
+    net.ipv6.conf.all.autoconf: "0"
+    net.ipv6.conf.default.autoconf: "0"
+  tmpfs:
+    - /run/netns:rw,nosuid,nodev,noexec
+  restart: unless-stopped
+
+x-host: &host
+  image: python:3.13.9-alpine3.22
+  cap_add: [NET_ADMIN]
+  volumes:
+    - ./traffic.py:/traffic.py:ro
+  restart: unless-stopped
+  stop_signal: SIGKILL
+
+services:
+  srl1:
+    <<: *srl
+    hostname: srl1
+    volumes:
+      - ./topology-srl1.yml:/tmp/topology.yml:ro
+    networks:
+      mgmt:
+        interface_name: eth0
+        ipv4_address: 10.20.0.11
+      link1:
+        interface_name: e1-1
+        ipv4_address: 10.20.1.2
+      link2:
+        interface_name: e1-2
+        ipv4_address: 10.20.2.2
+
+  srl2:
+    <<: *srl
+    hostname: srl2
+    volumes:
+      - ./topology-srl2.yml:/tmp/topology.yml:ro
+    networks:
+      mgmt:
+        interface_name: eth0
+        ipv4_address: 10.20.0.12
+      link2:
+        interface_name: e1-1
+        ipv4_address: 10.20.2.3
+      link3:
+        interface_name: e1-2
+        ipv4_address: 10.20.3.2
+
+  # About 2 Mbit/s to the sink; receives the sink's stream back.
+  sender:
+    <<: *host
+    hostname: sender
+    command: >-
+      sh -c "ip route replace 10.20.3.0/24 via 10.20.1.2 &&
+      exec python3 -u /traffic.py --peer 10.20.3.10 --kbit 2000"
+    networks:
+      link1:
+        ipv4_address: 10.20.1.10
+
+  # About 200 kbit/s back to the sender, so both directions of every port move.
+  sink:
+    <<: *host
+    hostname: sink
+    command: >-
+      sh -c "ip route replace 10.20.1.0/24 via 10.20.3.2 &&
+      exec python3 -u /traffic.py --peer 10.20.1.10 --kbit 200"
+    networks:
+      link3:
+        ipv4_address: 10.20.3.10
+
+networks:
+  mgmt:
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+          gateway: 10.20.0.1
+  # The links are internal: no NAT and no default route out of the lab.
+  link1:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.1.0/24
+          gateway: 10.20.1.1
+  link2:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.2.0/24
+          gateway: 10.20.2.1
+  link3:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.20.3.0/24
+          gateway: 10.20.3.1
