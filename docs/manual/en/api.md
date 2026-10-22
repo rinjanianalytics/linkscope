@@ -40,7 +40,7 @@ a safe subset: structure and text formatting, and links to `http` and `https` on
 
 ```json
 {
-  "version": "0.2.1",
+  "version": "0.3.0",
   "started": 1760940000,
   "now": 1760943600,
   "cycles": 12,

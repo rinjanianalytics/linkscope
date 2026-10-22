@@ -57,7 +57,7 @@ tetap di `mrtg.cfg`.
 |---|---|---|
 | `LINKSCOPE_LISTEN` | `127.0.0.1:8080` | Tempat antarmuka, API JSON, dan `/metrics` dipublikasikan di host |
 | `LINKSCOPE_CONFIG` | `./mrtg.cfg` | Berkas konfigurasi di host |
-| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.2.1` | Image yang dijalankan |
+| `LINKSCOPE_IMAGE` | `ghcr.io/rinjanianalytics/linkscope:0.3.0` | Image yang dijalankan |
 | `CARGO_BUILD_JOBS` | `4` | Jumlah job Cargo saat image dibangun di sini |
 
 Antarmuka web tidak memiliki login. Untuk membukanya dari jaringan manajemen, setel
