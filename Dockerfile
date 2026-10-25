@@ -11,7 +11,7 @@
 #   docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/rinjanianalytics/linkscope:0.3.0 .
 # Releases are built and pushed by .github/workflows/release.yml from a version tag.
 
-FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-bookworm AS build
+FROM --platform=$BUILDPLATFORM rust:1.99.1-slim-bookworm AS build
 ARG TARGETARCH
 ARG BUILDARCH
 # Jobs for cargo; lower it on a small build host (docker build --build-arg CARGO_BUILD_JOBS=2).
