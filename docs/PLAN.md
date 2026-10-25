@@ -314,7 +314,7 @@ of Release, builds both images without pushing.
       - Actions runs on the public repository (the billing block of the private PathScope
         repositories does not apply), and CI passed on main after the merge.
       - The release dry run built both images in 4.5 minutes.
-      - the owner gave the repository's Actions the Write role on the package.
+      - The owner gave the repository's Actions the Write role on the package.
       - Only GitHub's own actions (`checkout`, `cache`), pinned by commit; the Docker steps are
         plain commands. The token is read-only except in the publish job, which only a tag starts.
       - The first run found a bug in 0.2.0: `aes` 0.9.3, which `async-snmp` brings in, needs Rust
